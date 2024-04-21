@@ -1,7 +1,7 @@
 #pragma once
 #include "window.hpp"
 
-#define VOXELS_WIDTH 768
+#define VOXELS_WIDTH 512
 #define VOXELS_HEIGHT 96
 
 extern const int NumVertices;

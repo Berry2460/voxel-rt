@@ -1,6 +1,6 @@
 #version 430
 
-const int VOXELS_WIDTH=768;
+const int VOXELS_WIDTH=512;
 const int VOXELS_HEIGHT=96;
 const int RENDER_DIST=128;
 const float AMBIENT=0.4f;
@@ -181,10 +181,9 @@ void main(){
 	vec3 rotatedDir=vec3(rotateMatrix * vec4(rayDirection, 0));
 
 	int fColorIndex=castRay(camPos*voxelSize, rotatedDir, camDir, RENDER_DIST);
-
 	
 	vec3 toLight=normalize(lightPos - hitPos);
-
+	
 	float multiplier=AMBIENT;
 
 	//apply color of shortest ray
