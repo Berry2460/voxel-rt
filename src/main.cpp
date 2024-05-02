@@ -26,9 +26,10 @@ glm::mat4 rotateMatrix = glm::mat4(1.0f);
 
 //voxel rendering data
 int voxels[VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH];
+int voxelChunks[(VOXELS_WIDTH>>CHUNK_FACTOR) * (VOXELS_HEIGHT>>CHUNK_FACTOR) * (VOXELS_WIDTH>>CHUNK_FACTOR)];
+
 glm::vec3 startLightPos = glm::vec3((float)VOXELS_WIDTH / 2.0f, (float)VOXELS_WIDTH * 3.0f, (float)VOXELS_WIDTH / 2.0f);
 glm::vec3 lightPos = startLightPos;
-float voxelSize = 0.6f;
 float aspectRatio = (float)screenWidth / screenHeight;
 float lightRotation = -45.0f;
 

@@ -37,10 +37,7 @@ void doDestroy(){
 		//destroy
 		keys[RMB]=false;
 		removeSphere(camPos + destroyRange*camDir, destroyRange/2.0f);
-
-		//reload data to SSBO
-		//this is inefficient but it works
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(voxels), voxels, GL_DYNAMIC_COPY);
+		updateGeometry();
 	}
 }
 

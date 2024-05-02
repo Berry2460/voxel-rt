@@ -2,6 +2,7 @@
 #include "controls.hpp"
 
 #include <iostream>
+#include <stdio.h>
 
 const int NumVertices = 6;
 
@@ -17,7 +18,7 @@ glm::vec4 vertices[NumVertices] = {
 };
 
 //uniform locations
-GLuint ssbo, AspectRatio, VoxelSize, CamDir, CamPos, CamRotation, LightPos, RotateMatrix;
+GLuint ssbo, AspectRatio, VoxelChunks, CamDir, CamPos, CamRotation, LightPos, RotateMatrix;
 
 // Create a NULL-terminated string by reading the provided file
 static char* readShaderSource(const char* shaderFile){
@@ -37,7 +38,6 @@ static char* readShaderSource(const char* shaderFile){
 
 	return buf;
 }
-
 
 // Create a GLSL program object from vertex and fragment shader files
 GLuint InitShader(const char* vShaderFile, const char* fShaderFile){
@@ -109,21 +109,60 @@ GLuint InitShader(const char* vShaderFile, const char* fShaderFile){
 }
 
 
+void updateGeometry(){
+	//reload data to SSBO
+	//this is inefficient but it works
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(voxels), voxels, GL_DYNAMIC_COPY);
+	
+	//update chunk data
+	glUniform1iv(VoxelChunks, sizeof(voxelChunks), voxelChunks);
+}
+
+
+void placeVoxel(int x, int y, int z, int voxel){
+	int index = x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
+	
+	if (index >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
+		int chunkIndex = (x>>CHUNK_FACTOR) + ((VOXELS_WIDTH>>CHUNK_FACTOR) * (y>>CHUNK_FACTOR)) + ((VOXELS_WIDTH>>CHUNK_FACTOR) * (VOXELS_HEIGHT>>CHUNK_FACTOR) * (z>>CHUNK_FACTOR));
+		
+		if (voxels[index] == -1){
+			voxelChunks[chunkIndex]++;
+		}
+		voxels[index]=voxel;
+	}
+}
+
+
+void destroyVoxel(int x, int y, int z){
+	int index = x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
+	
+	if (index >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
+		int chunkIndex = (x>>CHUNK_FACTOR) + ((VOXELS_WIDTH>>CHUNK_FACTOR) * (y>>CHUNK_FACTOR)) + ((VOXELS_WIDTH>>CHUNK_FACTOR) * (VOXELS_HEIGHT>>CHUNK_FACTOR) * (z>>CHUNK_FACTOR));
+		
+		if (voxels[index] != -1 && voxelChunks[chunkIndex] > 0){
+			voxelChunks[chunkIndex]--;
+		}
+		voxels[index] = -1;
+	}
+}
+
+
 void placeBush(glm::ivec3 pos, glm::ivec3 color, int radius){
     for (int z = -radius; z < radius; z++) {
         for (int y = -radius; y < radius; y++) {
             for (int x = -radius; x < radius; x++) {
                 if (x + pos.x < VOXELS_WIDTH && y + pos.y < VOXELS_HEIGHT && z + pos.z < VOXELS_WIDTH &&
-                    x + pos.x >= 0 && y + pos.y >= 0 && z + pos.z >= 0) {
-                    int index = x + pos.x + (VOXELS_WIDTH * (y + pos.y)) + (VOXELS_WIDTH * VOXELS_HEIGHT * (z + pos.z));
-                    if (x * x + y * y + z * z < radius * radius && index > 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH) {
-                        voxels[index] = 0;
-                        voxels[index] += color.r;
-                        voxels[index] = voxels[index] << 8;
+                    x + pos.x >= 0 && y + pos.y >= 0 && z + pos.z >= 0){
+                    if (x * x + y * y + z * z < radius * radius){
+                        int voxel = 0;
+                        voxel += color.r;
+                        voxel = voxel << 8;
                         //vary green color of tree
-                        voxels[index] += color.g - ((x + y + z) % 3) * 20;
-                        voxels[index] = voxels[index] << 8;
-                        voxels[index] += color.b;
+                        voxel += color.g - ((x + y + z) % 3) * 20;
+                        voxel = voxel << 8;
+                        voxel += color.b;
+						
+						placeVoxel(x+pos.x, y+pos.y, z+pos.z, voxel);
                     }
                 }
             }
@@ -138,9 +177,8 @@ void removeSphere(glm::ivec3 pos, int radius){
             for (int x = -radius; x < radius; x++) {
                 if (x + pos.x < VOXELS_WIDTH && y + pos.y < VOXELS_HEIGHT && z + pos.z < VOXELS_WIDTH &&
                     x + pos.x >= 0 && y + pos.y >= 0 && z + pos.z >= 0) {
-                    int index = x + pos.x + (VOXELS_WIDTH * (y + pos.y)) + (VOXELS_WIDTH * VOXELS_HEIGHT * (z + pos.z));
-                    if (x * x + y * y + z * z < radius * radius && index > 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH) {
-                        voxels[index] = -1;
+                    if (x * x + y * y + z * z < radius * radius){
+						destroyVoxel(x+pos.x, y+pos.y, z+pos.z);
                     }
                 }
             }
@@ -153,18 +191,16 @@ void placeTrunk(glm::ivec3 pos, glm::ivec3 color, int length) {
     for (int z = -length>>2; z < length>>2; z++) {
         for (int y = 0; y < length; y++) {
             for (int x = -length>>2; x < length>>2; x++) {
-                if (x + pos.x < VOXELS_WIDTH && y + pos.y < VOXELS_HEIGHT && z + pos.z < VOXELS_WIDTH &&
-                    x + pos.x >= 0 && y + pos.y >= 0 && z + pos.z >= 0) {
-                    int index = x + pos.x + (VOXELS_WIDTH * (y + pos.y)) + (VOXELS_WIDTH * VOXELS_HEIGHT * (z + pos.z));
-                    if (index >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH) {
-                        voxels[index] = 0;
-                        //vary colors of brown for tree trunk
-                        voxels[index] += color.r - ((x + z) % 2) * 10;
-                        voxels[index] = voxels[index] << 8;
-                        voxels[index] += color.g - ((x + z) % 2) * 10;
-                        voxels[index] = voxels[index] << 8;
-                        voxels[index] += color.b;
-                    }
+                if (x + pos.x < VOXELS_WIDTH && y + pos.y < VOXELS_HEIGHT && z + pos.z < VOXELS_WIDTH) {
+					int voxel = 0;
+					//vary colors of brown for tree trunk
+					voxel += color.r - ((x + z) % 2) * 10;
+					voxel = voxel << 8;
+					voxel += color.g - ((x + z) % 2) * 10;
+					voxel = voxel << 8;
+					voxel += color.b;
+					
+					placeVoxel(x+pos.x, y+pos.y, z+pos.z, voxel);
                 }
             }
         }
@@ -172,41 +208,81 @@ void placeTrunk(glm::ivec3 pos, glm::ivec3 color, int length) {
 }
 
 
-void initVoxels() {
-    for (int z = 0; z < VOXELS_WIDTH; z++) {
-        for (int y = 0; y < VOXELS_HEIGHT; y++) {
-            for (int x = 0; x < VOXELS_WIDTH; x++) {
-                int index = x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
+void clearChunk(int x, int y, int z){
+	int chunkIndex = x + ((VOXELS_WIDTH/CHUNK_FACTOR) * y) + ((VOXELS_WIDTH/CHUNK_FACTOR) * (VOXELS_HEIGHT/CHUNK_FACTOR) * z);
+	voxelChunks[chunkIndex]=0;
+}
+
+
+void initVoxelChunks(){
+    for (int z = 0; z < VOXELS_WIDTH>>CHUNK_FACTOR; z++){
+        for (int y = 0; y < VOXELS_HEIGHT>>CHUNK_FACTOR; y++){
+            for (int x = 0; x < VOXELS_WIDTH>>CHUNK_FACTOR; x++){
+				clearChunk(x, y, z);
+			}
+		}
+	}
+}
+
+
+void printChunks(){
+    for (int z = 0; z < VOXELS_WIDTH>>CHUNK_FACTOR; z++){
+        for (int y = 0; y < VOXELS_HEIGHT>>CHUNK_FACTOR; y++){
+            for (int x = 0; x < VOXELS_WIDTH>>CHUNK_FACTOR; x++){
+				int chunkIndex = x + ((VOXELS_WIDTH/CHUNK_FACTOR) * y) + ((VOXELS_WIDTH/CHUNK_FACTOR) * (VOXELS_HEIGHT/CHUNK_FACTOR) * z);
+				printf("chunk at %d %d %d has %d voxels\n", x,y,z,voxelChunks[chunkIndex]);
+			}
+		}
+	}
+}
+
+
+void initVoxels(){
+	initVoxelChunks();
+	int voxel;
+	
+	for (int i=0; i<sizeof(voxels)/sizeof(int); i++){
+		voxels[i]=-1;
+	}
+	
+    for (int z = 0; z < VOXELS_WIDTH; z++){
+        for (int y = 0; y < VOXELS_HEIGHT; y++){
+            for (int x = 0; x < VOXELS_WIDTH; x++){
                 //vary colors of ground voxels placed
                 int colorVariation = 5 * ((x + y + z) % 3);
-
-                voxels[index] = -1;
+				
                 //stone
                 if (y <= 25){
-                    voxels[index] = 0;
-                    voxels[index] += 90 + colorVariation;
-                    voxels[index] = voxels[index] << 8;
-                    voxels[index] += 90 + colorVariation;
-                    voxels[index] = voxels[index] << 8;
-                    voxels[index] += 90 + colorVariation;
+                    voxel=0;
+                    voxel+=90 + colorVariation;
+                    voxel=voxel << 8;
+                    voxel+=90 + colorVariation;
+                    voxel=voxel << 8;
+                    voxel+=90 + colorVariation;
+					
+					placeVoxel(x, y, z, voxel);
                 }
                 //dirt
-                else if (y <= 33) {
-                    voxels[index] = 0;
-                    voxels[index] += 120 + colorVariation;
-                    voxels[index] = voxels[index] << 8;
-                    voxels[index] += 100 + colorVariation;
-                    voxels[index] = voxels[index] << 8;
-                    voxels[index] += 0;
+                else if (y <= 33){
+                    voxel=0;
+                    voxel+=120 + colorVariation;
+                    voxel=voxel << 8;
+                    voxel+=100 + colorVariation;
+                    voxel=voxel << 8;
+                    voxel+=0;
+					
+					placeVoxel(x, y, z, voxel);
                 }
                 //grass
-                else if (y <= 36) {
-                    voxels[index] = 0;
-                    voxels[index] += 10;
-                    voxels[index] = voxels[index] << 8;
-                    voxels[index] += 130 + colorVariation;
-                    voxels[index] = voxels[index] << 8;
-                    voxels[index] += 10;
+                else if (y <= 36){
+                    voxel=0;
+                    voxel+=10;
+                    voxel=voxel << 8;
+                    voxel+=130 + colorVariation;
+                    voxel=voxel << 8;
+                    voxel+=10;
+					
+					placeVoxel(x, y, z, voxel);
                 }
             }
         }
@@ -220,6 +296,18 @@ void initVoxels() {
             }
         }
     }
+	
+	//printChunks();
+}
+
+
+void updateUniforms(){
+    glUniform1f(AspectRatio, aspectRatio);
+    glUniform3f(CamPos, camPos.x, camPos.y, camPos.z);
+    glUniform3f(CamDir, camDir.x, camDir.y, camDir.z);
+    glUniform2f(CamRotation, camRotation.x, camRotation.y);
+    glUniform3f(LightPos, lightPos.x, lightPos.y, lightPos.z);
+    glUniformMatrix4fv(RotateMatrix, 1, GL_FALSE, glm::value_ptr(rotateMatrix));
 }
 
 
@@ -245,7 +333,6 @@ void initRender(){
 	glVertexAttribPointer(vPosition, 4, GL_FLOAT, GL_FALSE, 0, 0);
 
 	// Retrieve transformation uniform variable locations
-	VoxelSize = glGetUniformLocation(program, "voxelSize");
 	CamPos = glGetUniformLocation(program, "camPos");
 	CamDir = glGetUniformLocation(program, "camDir");
 	CamRotation = glGetUniformLocation(program, "camRotation");
@@ -257,16 +344,11 @@ void initRender(){
 	initVoxels();
 	
 	//init uniforms
-	glUniform1f(VoxelSize, voxelSize);
-	glUniform1f(AspectRatio, aspectRatio);
-	glUniform3f(CamPos, camPos.x, camPos.y, camPos.z);
-	glUniform3f(CamDir, camDir.x, camDir.y, camDir.z);
-	glUniform2f(CamRotation, camRotation.x, camRotation.y);
-	glUniform3f(LightPos, lightPos.x, lightPos.y, lightPos.z);
-	glUniformMatrix4fv(RotateMatrix, 1, GL_FALSE, glm::value_ptr(rotateMatrix));
+	updateUniforms();
+	glUniform1iv(VoxelChunks, sizeof(voxelChunks), voxelChunks);
 	
 	//load voxels into GPU
-	glGenBuffers(1, &ssbo);
+	glGenBuffers(2, &ssbo);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(voxels), voxels, GL_DYNAMIC_COPY);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo);
@@ -290,18 +372,6 @@ void lightUpdate(){
     rot = glm::rotate(rot, glm::radians(lightRotation), glm::vec3(0, 0, 1));
     lightPos = rot * glm::vec4(startLightPos, 1);
 }
-
-
-void updateUniforms(){
-    glUniform1f(VoxelSize, voxelSize);
-    glUniform1f(AspectRatio, aspectRatio);
-    glUniform3f(CamPos, camPos.x, camPos.y, camPos.z);
-    glUniform3f(CamDir, camDir.x, camDir.y, camDir.z);
-    glUniform2f(CamRotation, camRotation.x, camRotation.y);
-    glUniform3f(LightPos, lightPos.x, lightPos.y, lightPos.z);
-    glUniformMatrix4fv(RotateMatrix, 1, GL_FALSE, glm::value_ptr(rotateMatrix));
-}
-
 
 void reshape(int width, int height){
     glViewport(0, 0, width, height);
