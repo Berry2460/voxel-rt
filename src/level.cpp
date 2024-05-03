@@ -34,6 +34,7 @@ void removeSphere(glm::ivec3 pos, int radius){
                     x + pos.x >= 0 && y + pos.y >= 0 && z + pos.z >= 0) {
                     if (x * x + y * y + z * z < radius * radius){
 						destroyVoxel(x+pos.x, y+pos.y, z+pos.z);
+						fixDepthField(x+pos.x, y+pos.y, z+pos.z);
                     }
                 }
             }

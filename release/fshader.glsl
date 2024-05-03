@@ -2,7 +2,7 @@
 
 const int VOXELS_WIDTH=512;
 const int VOXELS_HEIGHT=96;
-const int RENDER_DIST=256;
+const int RENDER_DIST=384;
 const float AMBIENT=0.4f;
 const float DIFFUSE=0.8f;
 

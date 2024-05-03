@@ -5,29 +5,82 @@ const float PI = 3.14159f;
 
 const float MAP_EDGE_OFFSET = 1.0f; //camera must stay within 1 block of map bounds
 
+static float gravity=0.0f;
+
+
+int walkCheck(){
+	int indexCheck=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
+	int yMod=0;
+	while (voxels[indexCheck] > -1){
+		yMod++;
+		indexCheck=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT + yMod, (int)camPos.z);
+	}
+	if (yMod > PLAYER_HEIGHT>>2){
+		yMod=-1;
+	}
+	return yMod-1;
+}
+
+
 void movementUpdate(){
-    float speed = 0.6f;
+    float speed = 0.3f;
     glm::mat4 rot=glm::mat4(1.0f);
     rot = glm::rotate(rot, glm::radians(90.0f), glm::vec3(0, 1, 0));
-    glm::vec3 sideStep = glm::normalize(glm::vec3(glm::vec4(camDir.x, 0, camDir.z, 0) * rot)) * speed; //ignore Y axis on side-steps
+	glm::vec3 frontStep = glm::normalize(glm::vec3(camDir.x, 0, camDir.z)) * speed; //ignore Y axis
+    glm::vec3 sideStep = glm::normalize(glm::vec3(glm::vec4(camDir.x, 0, camDir.z, 0) * rot)) * speed;
+	
+	glm::vec3 stepTaken=glm::vec3(0,0,0);
 
-    if (keys[KEY_W]) {
-        camPos += camDir * speed;
+    if (keys[KEY_W]){
+        camPos += frontStep;
+		stepTaken=frontStep;
     }
-    if (keys[KEY_S]) {
-        camPos -= camDir * speed;
+    if (keys[KEY_S]){
+        camPos -= frontStep;
+		stepTaken=frontStep;
     }
-    if (keys[KEY_A]) {
+    if (keys[KEY_A]){
         camPos += sideStep;
+		stepTaken=sideStep;
     }
-    if (keys[KEY_D]) {
+    if (keys[KEY_D]){
         camPos -= sideStep;
+		stepTaken=sideStep;
     }
+	if (keys[SPACE]){
+		int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
+		if (voxels[index] > -1 && gravity == 0.0f){
+			gravity+=0.4f;
+		}
+    }
+	
+	int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
+	if (voxels[index] > -1 && gravity == 0.0f){
+		int walkY=walkCheck();
+		if (walkY == -2){
+			camPos-=stepTaken;
+		}
+		else{
+			camPos.y=(int)camPos.y + walkY;
+		}
+	}
 
     //bound camera
     camPos.x = glm::min(glm::max(camPos.x, MAP_EDGE_OFFSET), (float)VOXELS_WIDTH - MAP_EDGE_OFFSET - 1);
     camPos.y = glm::min(glm::max(camPos.y, MAP_EDGE_OFFSET), (float)VOXELS_HEIGHT - MAP_EDGE_OFFSET - 1);
     camPos.z = glm::min(glm::max(camPos.z, MAP_EDGE_OFFSET), (float)VOXELS_WIDTH - MAP_EDGE_OFFSET - 1);
+}
+
+
+void doGravity(){
+	int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
+	camPos.y+=gravity;
+	if (voxels[index] > -1 && gravity < 0.0f){
+		gravity=0.0f;
+	}
+	else if (voxels[index] < 0 || gravity > 0.0f){
+		gravity-=0.01f;
+	}
 }
 
 void doDestroy(){

@@ -3,6 +3,8 @@
 
 #define VOXELS_WIDTH 512
 #define VOXELS_HEIGHT 96
+#define MIN_DEPTH_FIELD 3
+#define MAX_DEPTH_FIELD 7
 
 extern const int NumVertices;
 
@@ -18,8 +20,10 @@ extern float lightRotation;
 
 void updateGeometry();
 void initRender();
+int getVoxelIndex(int x, int y, int z);
 void placeVoxel(int x, int y, int z, int voxel);
 void destroyVoxel(int x, int y, int z);
+void fixDepthField(int x, int y, int z);
 void lightUpdate();
 void updateUniforms();
 void removeSphere(glm::ivec3 pos, int radius);

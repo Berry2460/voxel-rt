@@ -19,7 +19,7 @@ float lookX;
 float lookY;
 
 //camera data
-glm::vec3 camPos = glm::vec3(195, 45, 155);
+glm::vec3 camPos = glm::vec3(195, 55, 155);
 glm::vec3 camDir = glm::vec3(0, 0, 1);
 glm::vec2 camRotation = glm::vec2(0, 0);
 glm::mat4 rotateMatrix = glm::mat4(1.0f);
@@ -47,6 +47,7 @@ int main(){
 		movementUpdate();
 		doMouseLook();
 		doDestroy();
+		doGravity();
 		
 		updateUniforms();
 	}

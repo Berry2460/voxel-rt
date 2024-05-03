@@ -109,6 +109,12 @@ GLuint InitShader(const char* vShaderFile, const char* fShaderFile){
 }
 
 
+int getVoxelIndex(int x, int y, int z){
+	int index = x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
+	return index;
+}
+
+
 void updateGeometry(){
 	//reload data to SSBO
 	//this is inefficient but it works
@@ -116,67 +122,92 @@ void updateGeometry(){
 }
 
 
-void fixDepthField(int x, int y, int z, bool subtract){
-	int index = x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
-	int areaSurround=0;
-	bool failedSubtract=false;
-	for (int zCheck=z-1; zCheck<=z+1 && !failedSubtract; zCheck++){
-		for (int yCheck=y-1; yCheck<=y+1 && !failedSubtract; yCheck++){
-			for (int xCheck=x-1; xCheck<=x+1 && !failedSubtract; xCheck++){
-				int indexCheck = xCheck + (VOXELS_WIDTH * yCheck) + (VOXELS_WIDTH * VOXELS_HEIGHT * zCheck);
+void fixDepthFieldRecurse(int x, int y, int z, int range){
+	int index=getVoxelIndex(x, y, z);
+
+	int middle=range>>1;
+	int minDepth=0;
+	bool done=false;
+	
+	for (int zCheck=0; zCheck<range && !done; zCheck++){
+		for (int yCheck=0; yCheck<range && !done; yCheck++){
+			for (int xCheck=0; xCheck<range && !done; xCheck++){
+				//snap XY to other side once Z is in the middle portion
+				if (yCheck > 0 && yCheck < range-1 && zCheck > 0 && zCheck < range-1){
+					yCheck=range-1;
+				}
+				if (xCheck > 0 && xCheck < range-1 && zCheck > 0 && zCheck < range-1){
+					xCheck=range-1;
+				}
+				int xPoint=xCheck-middle + x;
+				int yPoint=yCheck-middle + y;
+				int zPoint=zCheck-middle + z;
+				int indexCheck=getVoxelIndex(xPoint, yPoint, zPoint);
 				
-				if (indexCheck >= 0 && indexCheck < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH && index != indexCheck){
-					if (!subtract && voxels[indexCheck] < -1){
-						voxels[indexCheck]++;
+				//check point is valid
+				if (xPoint >= 0 && yPoint >=0 && zPoint >=0 && indexCheck < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
+					//logic for empty voxel
+					if (voxels[index] < 0){
+						//check if we found a solid voxel
+						if (voxels[indexCheck] > -1){
+							done=true;
+							voxels[index]=-middle;
+						}
+						//find minDepth
+						else if (voxels[indexCheck] < 0 && (voxels[indexCheck] > minDepth || minDepth == 0)){
+							minDepth=voxels[indexCheck];
+						}
 					}
-					else if (subtract){
-						if (areaSurround == 0 || voxels[indexCheck] > areaSurround){
-							areaSurround=voxels[indexCheck];
-						}
-						if (areaSurround > -1){
-							failedSubtract=true;
-						}
+					//logic for solid voxel
+					else if (voxels[indexCheck] < -middle){
+						voxels[indexCheck]=-middle;
+					}
+					else{
+						done=true;
 					}
 				}
 			}
 		}
 	}
-	if (subtract && !failedSubtract){
-		voxels[index]=areaSurround - 1;
+	if (!done && range < MAX_DEPTH_FIELD){
+		fixDepthFieldRecurse(x, y, z, range+2);
+	}
+	//add minDepth if all space was empty and voxel is empty
+	else if (!done && voxels[index] < 0){
+		voxels[index]=minDepth - middle;
 	}
 }
 
 
-void fixDepthFieldArea(int x, int y, int z, bool subtract){
-	for (int zCheck=z-1; zCheck<=z+1; zCheck++){
-		for (int yCheck=y-1; yCheck<=y+1; yCheck++){
-			for (int xCheck=x-1; xCheck<=x+1; xCheck++){
-				if (zCheck >= 0 && yCheck >= 0 && xCheck >= 0 &&
-					zCheck < VOXELS_WIDTH && yCheck < VOXELS_HEIGHT && xCheck < VOXELS_WIDTH){
-					fixDepthField(xCheck, yCheck, zCheck, subtract);
-				}
-			}
-		}
-	}
+void fixDepthField(int x, int y, int z){
+	fixDepthFieldRecurse(x, y, z, MIN_DEPTH_FIELD);
 }
 
 
 void placeVoxel(int x, int y, int z, int voxel){
-	int index = x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
+	int index=getVoxelIndex(x, y, z);
 	
-	if (index >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
+	if (x >= 0 && y >= 0 && z >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
 		voxels[index]=voxel;
-		fixDepthFieldArea(x, y, z, false);
 	}
 }
 
 
 void destroyVoxel(int x, int y, int z){
-	int index = x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
+	int index=getVoxelIndex(x, y, z);
 	
-	if (index >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
+	if (x >= 0 && y >= 0 && z >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
 		voxels[index] = -1;
-		fixDepthField(x, y, z, true);
+	}
+}
+
+void computeDepthField(){
+	for (int z = 0; z < VOXELS_WIDTH; z++){
+		for (int y = 0; y < VOXELS_HEIGHT; y++){
+			for (int x = 0; x < VOXELS_WIDTH; x++){
+				fixDepthField(x, y, z);
+			}
+		}
 	}
 }
 
@@ -228,6 +259,7 @@ void initRender(){
 		voxels[i]=-1;
 	}
 	initVoxels();
+	computeDepthField();
 	
 	//load voxels into GPU
 	glGenBuffers(2, &ssbo);
@@ -240,7 +272,7 @@ void initRender(){
 
 
 void lightUpdate(){
-    float increment = 0.01f;
+    float increment = 0.004f;
     glm::mat4 rot=glm::mat4(1.0f);
 
     if (lightRotation >= 360.0f) {
