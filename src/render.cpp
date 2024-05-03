@@ -115,7 +115,6 @@ void updateGeometry(){
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(voxels), voxels, GL_DYNAMIC_COPY);
 }
 
-int largestDepth=-1;
 
 void fixDepthField(int x, int y, int z, bool subtract){
 	int index = x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
@@ -144,8 +143,19 @@ void fixDepthField(int x, int y, int z, bool subtract){
 	}
 	if (subtract && !failedSubtract){
 		voxels[index]=areaSurround - 1;
-		if (voxels[index] < largestDepth){
-			largestDepth=voxels[index];
+	}
+}
+
+
+void fixDepthFieldArea(int x, int y, int z, bool subtract){
+	for (int zCheck=z-1; zCheck<=z+1; zCheck++){
+		for (int yCheck=y-1; yCheck<=y+1; yCheck++){
+			for (int xCheck=x-1; xCheck<=x+1; xCheck++){
+				if (zCheck >= 0 && yCheck >= 0 && xCheck >= 0 &&
+					zCheck < VOXELS_WIDTH && yCheck < VOXELS_HEIGHT && xCheck < VOXELS_WIDTH){
+					fixDepthField(xCheck, yCheck, zCheck, subtract);
+				}
+			}
 		}
 	}
 }
@@ -156,7 +166,7 @@ void placeVoxel(int x, int y, int z, int voxel){
 	
 	if (index >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
 		voxels[index]=voxel;
-		fixDepthField(x, y, z, false);
+		fixDepthFieldArea(x, y, z, false);
 	}
 }
 
