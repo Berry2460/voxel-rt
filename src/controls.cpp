@@ -7,18 +7,15 @@ const float MAP_EDGE_OFFSET = 1.0f; //camera must stay within 1 block of map bou
 
 static float gravity=0.0f;
 
-
-int walkCheck(){
-	int indexCheck=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
-	int yMod=0;
-	while (voxels[indexCheck] > -1){
-		yMod++;
-		indexCheck=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT + yMod, (int)camPos.z);
+int collided(){
+	int collided=0;
+	for (int i=1; i<PLAYER_HEIGHT; i++){
+		int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT + i, (int)camPos.z);
+		if (voxels[index] > -1){
+			collided=i;
+		}
 	}
-	if (yMod > PLAYER_HEIGHT>>2){
-		yMod=-1;
-	}
-	return yMod-1;
+	return collided;
 }
 
 
@@ -33,19 +30,19 @@ void movementUpdate(){
 
     if (keys[KEY_W]){
         camPos += frontStep;
-		stepTaken=frontStep;
+		stepTaken+=frontStep;
     }
     if (keys[KEY_S]){
         camPos -= frontStep;
-		stepTaken=frontStep;
+		stepTaken+=-frontStep;
     }
     if (keys[KEY_A]){
         camPos += sideStep;
-		stepTaken=sideStep;
+		stepTaken+=sideStep;
     }
     if (keys[KEY_D]){
         camPos -= sideStep;
-		stepTaken=sideStep;
+		stepTaken+=-sideStep;
     }
 	if (keys[SPACE]){
 		int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
@@ -54,31 +51,41 @@ void movementUpdate(){
 		}
     }
 	
-	int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
-	if (voxels[index] > -1 && gravity == 0.0f){
-		int walkY=walkCheck();
-		if (walkY == -2){
-			camPos-=stepTaken;
-		}
-		else{
-			camPos.y=(int)camPos.y + walkY;
+	//movement collision check
+	int collision=collided();
+	while (collision){
+		if (stepTaken.x*stepTaken.x + stepTaken.y*stepTaken.y + stepTaken.z*stepTaken.z > 0){
+			collision=collided();
+			if (collision > PLAYER_HEIGHT>>2){
+				camPos-=stepTaken;
+			}
+			else{
+				camPos.y+=collision;
+			}
 		}
 	}
-
-    //bound camera
-    camPos.x = glm::min(glm::max(camPos.x, MAP_EDGE_OFFSET), (float)VOXELS_WIDTH - MAP_EDGE_OFFSET - 1);
-    camPos.y = glm::min(glm::max(camPos.y, MAP_EDGE_OFFSET), (float)VOXELS_HEIGHT - MAP_EDGE_OFFSET - 1);
-    camPos.z = glm::min(glm::max(camPos.z, MAP_EDGE_OFFSET), (float)VOXELS_WIDTH - MAP_EDGE_OFFSET - 1);
 }
 
 
 void doGravity(){
-	int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
 	camPos.y+=gravity;
-	if (voxels[index] > -1 && gravity < 0.0f){
+	
+	//bound camera
+    camPos.x = glm::min(glm::max(camPos.x, MAP_EDGE_OFFSET), (float)VOXELS_WIDTH - MAP_EDGE_OFFSET - 1);
+    camPos.y = glm::min(glm::max(camPos.y, MAP_EDGE_OFFSET + PLAYER_HEIGHT), (float)VOXELS_HEIGHT - MAP_EDGE_OFFSET - 1);
+    camPos.z = glm::min(glm::max(camPos.z, MAP_EDGE_OFFSET), (float)VOXELS_WIDTH - MAP_EDGE_OFFSET - 1);
+	
+	int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
+	int collision=collided();
+	
+	//if hit something
+	if (collision){
+		//undo gravity
+		camPos.y-=gravity;
 		gravity=0.0f;
 	}
-	else if (voxels[index] < 0 || gravity > 0.0f){
+	//falling
+	else if (voxels[index] < 0){
 		gravity-=0.01f;
 	}
 }

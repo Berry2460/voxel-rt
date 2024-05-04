@@ -46,8 +46,8 @@ int main(){
 		lightUpdate();
 		movementUpdate();
 		doMouseLook();
-		doDestroy();
 		doGravity();
+		doDestroy();
 		
 		updateUniforms();
 	}

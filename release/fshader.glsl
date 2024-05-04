@@ -190,7 +190,7 @@ void main(){
 	//init our ray direction
 	vec3 rayDirection=normalize(vec3(vPos.x*aspectRatio, vPos.y, 1.0f));
 	vec3 rotatedDir=vec3(rotateMatrix * vec4(rayDirection, 0));
-
+	
 	int fColorIndex=castRay(camPos, rotatedDir, camDir, RENDER_DIST);
 	
 	vec3 toLight=normalize(lightPos - hitPos);
