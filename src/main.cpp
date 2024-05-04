@@ -18,6 +18,9 @@ bool keysPress[KEYS];
 float lookX;
 float lookY;
 
+//debug
+int viewDepthField=0;
+
 //camera data
 glm::vec3 camPos = glm::vec3(195, 55, 155);
 glm::vec3 camDir = glm::vec3(0, 0, 1);

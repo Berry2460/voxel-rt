@@ -20,9 +20,12 @@ uniform vec2 camRotation;
 uniform vec3 lightPos;
 uniform float aspectRatio;
 uniform mat4 rotateMatrix;
+uniform int viewDepthField;
 
 vec3 hitPos=vec3(0,0,0);
 vec3 hitNormal=vec3(0,0,0);
+
+vec3 stepCount=vec3(0,0,0);
 
 int getVoxelIndex(vec3 currCheck, vec3 startPosition, vec3 lookDir){
 	int hit=-1;
@@ -81,13 +84,14 @@ int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, int dist){ //NO
 	float dz=1.0f/rayDirection.z;
 
 	//find the first intersect of each ray
-	vec3 firstX=(int(startPosition.x) - startPosition.x + 0.0001f*sign(dx)) * dx * rayDirection + startPosition;
-	vec3 firstY=(int(startPosition.y) - startPosition.y + 0.0001f*sign(dy)) * dy * rayDirection + startPosition;
-	vec3 firstZ=(int(startPosition.z) - startPosition.z + 0.0001f*sign(dz)) * dz * rayDirection + startPosition;
-	
+	vec3 firstX=(int(startPosition.x) - startPosition.x + 0.001f*sign(dx)) * dx * rayDirection + startPosition;
+	vec3 firstY=(int(startPosition.y) - startPosition.y + 0.001f*sign(dy)) * dy * rayDirection + startPosition;
+	vec3 firstZ=(int(startPosition.z) - startPosition.z + 0.001f*sign(dz)) * dz * rayDirection + startPosition;
+
 	//cast X plane ray
 	int i=0;
 	while (i*dx*sign(dx) < dist && !axisHit.x){
+		stepCount.x++;
 		currCheckX=i*dx*sign(dx)*rayDirection + firstX;
 		
 		rayLengthX=length(currCheckX - startPosition);
@@ -120,6 +124,7 @@ int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, int dist){ //NO
 	//cast Y plane ray
 	i=0;
 	while (i*dy*sign(dy) < dist && !axisHit.y){
+		stepCount.y++;
 		currCheckY=i*dy*sign(dy)*rayDirection + firstY;
 		
 		rayLengthY=length(currCheckY - startPosition);
@@ -152,6 +157,7 @@ int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, int dist){ //NO
 	//cast Z plane ray
 	i=0;
 	while (i*dz*sign(dz) < dist && !axisHit.z){
+		stepCount.z++;
 		currCheckZ=i*dz*sign(dz)*rayDirection + firstZ;
 
 		rayLengthZ=length(currCheckZ - startPosition);
@@ -180,6 +186,7 @@ int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, int dist){ //NO
 		}
 		i++;
 	}
+	
 	return fColorIndex;
 }
 
@@ -193,21 +200,26 @@ void main(){
 	
 	int fColorIndex=castRay(camPos, rotatedDir, camDir, RENDER_DIST);
 	
-	vec3 toLight=normalize(lightPos - hitPos);
-	
-	float multiplier=AMBIENT;
-	
-	//apply color of shortest ray
-	if (fColorIndex != -1 && voxels[fColorIndex] >= 0){
-		//cast shadow ray
-		if (castRay(hitPos + toLight*0.001f, toLight, toLight, RENDER_DIST>>2) == -1){
-			multiplier=AMBIENT + DIFFUSE*max(0, dot(hitNormal, toLight));
-		}
+	if (viewDepthField == 1){
+		fColor=vec4(stepCount/50, 1);
+	}
+	else{
+		vec3 toLight=normalize(lightPos - hitPos);
 		
-		//color of voxels is stored in a single int to save memory, we use bitwise ops to extract RGB values
-		fColor.r=float((voxels[fColorIndex] & 0x00FF0000) >> 16) / 255.0f * multiplier;
-		fColor.g=float((voxels[fColorIndex] & 0x0000FF00) >> 8) / 255.0f * multiplier;
-		fColor.b=float(voxels[fColorIndex] & 0x000000FF) / 255.0f * multiplier;
-		fColor.a=1.0f;
+		float multiplier=AMBIENT;
+		
+		//apply color of shortest ray
+		if (fColorIndex != -1 && voxels[fColorIndex] >= 0){
+			//cast shadow ray
+			if (castRay(hitPos + toLight*0.001f, toLight, toLight, RENDER_DIST>>2) == -1){
+				multiplier=AMBIENT + DIFFUSE*max(0, dot(hitNormal, toLight));
+			}
+			
+			//color of voxels is stored in a single int to save memory, we use bitwise ops to extract RGB values
+			fColor.r=float((voxels[fColorIndex] & 0x00FF0000) >> 16) / 255.0f * multiplier;
+			fColor.g=float((voxels[fColorIndex] & 0x0000FF00) >> 8) / 255.0f * multiplier;
+			fColor.b=float(voxels[fColorIndex] & 0x000000FF) / 255.0f * multiplier;
+			fColor.a=1.0f;
+		}
 	}
 }

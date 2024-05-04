@@ -18,7 +18,7 @@ glm::vec4 vertices[NumVertices] = {
 };
 
 //uniform locations
-GLuint ssbo, AspectRatio, CamDir, CamPos, CamRotation, LightPos, RotateMatrix;
+GLuint ssbo, AspectRatio, CamDir, CamPos, CamRotation, LightPos, RotateMatrix, ViewDepthField;
 
 // Create a NULL-terminated string by reading the provided file
 static char* readShaderSource(const char* shaderFile){
@@ -174,7 +174,7 @@ void fixDepthFieldRecurse(int x, int y, int z, int range){
 	}
 	//add minDepth if all space was empty and voxel is empty
 	else if (!done && voxels[index] < 0){
-		voxels[index]=minDepth - middle;
+		voxels[index]=-middle - 1;
 	}
 }
 
@@ -219,6 +219,7 @@ void updateUniforms(){
 	glUniform2f(CamRotation, camRotation.x, camRotation.y);
 	glUniform3f(LightPos, lightPos.x, lightPos.y, lightPos.z);
 	glUniformMatrix4fv(RotateMatrix, 1, GL_FALSE, glm::value_ptr(rotateMatrix));
+	glUniform1i(ViewDepthField, viewDepthField);
 }
 
 
@@ -250,6 +251,7 @@ void initRender(){
 	AspectRatio = glGetUniformLocation(program, "aspectRatio");
 	LightPos = glGetUniformLocation(program, "lightPos");
 	RotateMatrix = glGetUniformLocation(program, "rotateMatrix");
+	ViewDepthField = glGetUniformLocation(program, "viewDepthField");
 	
 	//init uniforms
 	updateUniforms();

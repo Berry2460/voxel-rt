@@ -50,6 +50,10 @@ void movementUpdate(){
 			gravity+=0.4f;
 		}
     }
+	if (keys[SHIFT]){
+		keys[SHIFT]=false;
+		viewDepthField=!viewDepthField;
+    }
 	
 	//movement collision check
 	int collision=collided();

@@ -18,6 +18,8 @@ extern glm::vec3 lightPos;
 extern float aspectRatio;
 extern float lightRotation;
 
+extern int viewDepthField;
+
 void updateGeometry();
 void initRender();
 int getVoxelIndex(int x, int y, int z);
