@@ -126,7 +126,6 @@ void fixDepthFieldRecurse(int x, int y, int z, int range){
 	int index=getVoxelIndex(x, y, z);
 
 	int middle=range>>1;
-	int minDepth=0;
 	bool done=false;
 	
 	for (int zCheck=0; zCheck<range && !done; zCheck++){
@@ -152,10 +151,6 @@ void fixDepthFieldRecurse(int x, int y, int z, int range){
 						if (voxels[indexCheck] > -1){
 							done=true;
 							voxels[index]=-middle;
-						}
-						//find minDepth
-						else if (voxels[indexCheck] < 0 && (voxels[indexCheck] > minDepth || minDepth == 0)){
-							minDepth=voxels[indexCheck];
 						}
 					}
 					//logic for solid voxel
