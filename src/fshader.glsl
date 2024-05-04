@@ -84,9 +84,9 @@ int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, int dist){ //NO
 	float dz=1.0f/rayDirection.z;
 
 	//find the first intersect of each ray
-	vec3 firstX=(int(startPosition.x) - startPosition.x + 0.001f*sign(dx)) * dx * rayDirection + startPosition;
-	vec3 firstY=(int(startPosition.y) - startPosition.y + 0.001f*sign(dy)) * dy * rayDirection + startPosition;
-	vec3 firstZ=(int(startPosition.z) - startPosition.z + 0.001f*sign(dz)) * dz * rayDirection + startPosition;
+	vec3 firstX=(int(startPosition.x) - startPosition.x + 0.00001f*sign(dx)) * dx * rayDirection + startPosition;
+	vec3 firstY=(int(startPosition.y) - startPosition.y + 0.00001f*sign(dy)) * dy * rayDirection + startPosition;
+	vec3 firstZ=(int(startPosition.z) - startPosition.z + 0.00001f*sign(dz)) * dz * rayDirection + startPosition;
 
 	//cast X plane ray
 	int i=0;
