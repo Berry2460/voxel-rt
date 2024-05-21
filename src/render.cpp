@@ -232,7 +232,7 @@ void initRender(){
 	
 	// Load shaders and use the resulting shader program
 	GLuint program = InitShader("vshader.glsl", "fshader.glsl");
-	glUseProgram(program);
+	//glUseProgram(program); already doing this in InitShader function
 
 	// set up vertex arrays
 	GLuint vPosition = glGetAttribLocation(program, "vPosition");
