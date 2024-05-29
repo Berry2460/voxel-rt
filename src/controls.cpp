@@ -101,7 +101,6 @@ void doDestroy(){
 		//destroy
 		keys[RMB]=false;
 		removeSphere(camPos + destroyRange*camDir, destroyRange/2.0f);
-		updateGeometry();
 	}
 }
 
