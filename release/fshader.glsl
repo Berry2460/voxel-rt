@@ -1,8 +1,11 @@
 #version 430
 
+#define DEPTH_DEBUG
+
 const int VOXELS_WIDTH=512;
 const int VOXELS_HEIGHT=96;
-const int RENDER_DIST=384;
+
+const float RENDER_DIST=384.0f;
 const float AMBIENT=0.4f;
 const float DIFFUSE=0.8f;
 
@@ -24,170 +27,169 @@ uniform int viewDepthField;
 
 vec3 hitPos=vec3(0,0,0);
 vec3 hitNormal=vec3(0,0,0);
+float hitDistance = 0.0f;
 
+#ifdef DEPTH_DEBUG
 vec3 stepCount=vec3(0,0,0);
+#endif
 
-int getVoxelIndex(vec3 currCheck, vec3 startPosition, vec3 lookDir){
-	int hit=-1;
+int checkIndex(int X, int Y, int Z){
 
-	//make sure we do not collide with objects behind the camera on accident
-	if (dot(currCheck-startPosition, lookDir) > 0){
-		//convert our vector into a 3D array index
-		int checkX=int(currCheck.x);
-		int checkY=int(currCheck.y) * VOXELS_WIDTH;
-		int checkZ=int(currCheck.z) * VOXELS_WIDTH * VOXELS_HEIGHT;
+	Y = Y * VOXELS_WIDTH;
+	Z = Z * VOXELS_WIDTH * VOXELS_HEIGHT;
+	int total = X+Y+Z;
+	//check if the index is within array bounds
+	if (total < VOXELS_WIDTH*VOXELS_HEIGHT*VOXELS_WIDTH &&
+		Z >= 0 && Z < VOXELS_WIDTH*VOXELS_HEIGHT*VOXELS_WIDTH &&
+		Y >= 0 && Y < VOXELS_WIDTH*VOXELS_HEIGHT &&
+		X >= 0 && X < VOXELS_WIDTH){
 
-		//check if the index is within array bounds
-		if (checkZ+checkY+checkX < VOXELS_WIDTH*VOXELS_HEIGHT*VOXELS_WIDTH &&
-			checkZ >= 0 && checkZ < VOXELS_WIDTH*VOXELS_HEIGHT*VOXELS_WIDTH &&
-			checkY >= 0 && checkY < VOXELS_WIDTH*VOXELS_HEIGHT &&
-			checkX >= 0 && checkX < VOXELS_WIDTH){
-
-			//hit voxel
-			hit=checkZ+checkY+checkX;
-		}
+		//hit voxel
+		return total;
 	}
 	
-	return hit;
+	return -1;
 }
 
-int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, int dist){ //NOTE: rayDirection should be normalized
-	//since we are casting rays in 3D space, we need to cast a ray for each axis
-	//each axis ray will only be able to collide with planes on its respective axis
-	//after each ray has collided with a plane on its own axis, we take the color value of the shortest ray
+//https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.42.3443&rep=rep1&type=pdf
+//https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/amanatidesWooAlgorithm.cpp
+//https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview/FastVoxelTraversalOverview.md
+int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, float dist){
+	rayDirection = normalize(rayDirection);
 
-	//record which axis rays have hit a plane
-	bvec3 axisHit=bvec3(false, false ,false);
-	
-	//record what color index each ray hits
-	int xColorIndex=-1;
-	int yColorIndex=-1;
-	int zColorIndex=-1;
+	// u->
+	int X = int(startPosition.x);
+	int Y = int(startPosition.y);
+	int Z = int(startPosition.z);
 
-	//color index of the shortest ray
-	int fColorIndex=-1;
-	
-	//storage for ray steps
-	vec3 currCheckX;
-	vec3 currCheckY;
-	vec3 currCheckZ;
+	//v-> = rayDirection
+	int stepX = bool(rayDirection.x == 0.0f) ? 0 : int(sign(rayDirection.x)); 
+	int stepY = bool(rayDirection.y == 0.0f) ? 0 : int(sign(rayDirection.y)); 
+	int stepZ = bool(rayDirection.z == 0.0f) ? 0 : int(sign(rayDirection.z)); 
 
-	//store ray lengths to test out of bounds
-	float rayLength=RENDER_DIST;
-	float rayLengthX=rayLength;
-	float rayLengthY=rayLength;
-	float rayLengthZ=rayLength;
+	float tMaxX = ((X + int(stepX > 0) * 1) - startPosition.x) / rayDirection.x;
+	float tMaxY = ((Y + int(stepY > 0) * 1) - startPosition.y) / rayDirection.y;
+	float tMaxZ = ((Z + int(stepZ > 0) * 1) - startPosition.z) / rayDirection.z;
 
-	//calculate the step intervals each ray takes
-	float dx=1.0f/rayDirection.x;
-	float dy=1.0f/rayDirection.y;
-	float dz=1.0f/rayDirection.z;
+	//t = step amount
+	float tDeltaX = 1 / abs(rayDirection.x);
+	float tDeltaY = 1 / abs(rayDirection.y);
+	float tDeltaZ = 1 / abs(rayDirection.z);
 
-	//find the first intersect of each ray
-	vec3 firstX=(int(startPosition.x) - startPosition.x + 0.00001f*sign(dx)) * dx * rayDirection + startPosition;
-	vec3 firstY=(int(startPosition.y) - startPosition.y + 0.00001f*sign(dy)) * dy * rayDirection + startPosition;
-	vec3 firstZ=(int(startPosition.z) - startPosition.z + 0.00001f*sign(dz)) * dz * rayDirection + startPosition;
+	// algorithm = u-> + t * v-> for >= 0 
 
-	//cast X plane ray
-	int i=0;
-	while (i*dx*sign(dx) < dist && !axisHit.x){
-		stepCount.x++;
-		currCheckX=i*dx*sign(dx)*rayDirection + firstX;
-		
-		rayLengthX=length(currCheckX - startPosition);
-		xColorIndex=getVoxelIndex(currCheckX, startPosition, lookDir);
-		
-		//test out of bounds
-		axisHit.x=rayLengthX > dist ||
-					currCheckX.x < 0 || currCheckX.x >= VOXELS_WIDTH ||
-					currCheckX.y < 0 || currCheckX.y >= VOXELS_HEIGHT ||
-					currCheckX.z < 0 || currCheckX.z >= VOXELS_WIDTH;
+	float distAcume = 0.0f;
+	float curDist = 0.0f;
+	int hitIndex = -1;
 
-		//test hit
-		if (xColorIndex != -1 && voxels[xColorIndex] < -1){
-			i-=voxels[xColorIndex] + 1;
-		}
-		else if (xColorIndex != -1 && voxels[xColorIndex] >= 0 && !axisHit.x){
-			axisHit.x=true;
+	bool hitX = false;
+	bool hitY = false;
+	bool hitZ = false;
+   	while(dist > curDist) { 
 
-			//test shortest ray
-			if (rayLengthX < rayLength){
-				hitNormal=vec3(-sign(rayDirection.x), 0, 0);
-				fColorIndex=xColorIndex;
-				hitPos=currCheckX;
-				rayLength=rayLengthX;
+        if(tMaxX < tMaxY) { 
+          if(tMaxX < tMaxZ) { 
+             X= X + stepX; 
+			 hitX = true;
+			 curDist = tMaxX;
+             tMaxX= tMaxX + tDeltaX; 
+
+			 #ifdef DEPTH_DEBUG
+				stepCount.x++;
+			 #endif 
+			 	 
+          } else { 
+             Z= Z + stepZ; 
+			 hitZ = true;
+			 curDist = tMaxZ;	
+             tMaxZ= tMaxZ + tDeltaZ;
+
+			 #ifdef DEPTH_DEBUG
+				stepCount.z++;
+			 #endif 
+			  
+          } 
+        } else { 
+          if(tMaxY < tMaxZ) { 
+             Y= Y + stepY; 
+			 hitY = true;
+			 curDist = tMaxY;
+             tMaxY= tMaxY + tDeltaY; 	
+
+			 #ifdef DEPTH_DEBUG
+				stepCount.y++;
+			 #endif 
+			 
+          } else { 
+             Z= Z + stepZ; 
+			 hitZ = true;
+			 curDist = tMaxZ;
+             tMaxZ= tMaxZ + tDeltaZ; 
+
+			 #ifdef DEPTH_DEBUG
+				stepCount.z++;
+			 #endif 
+			 
+          } 
+        } 
+
+
+
+		hitIndex = checkIndex(X,Y,Z);
+		//castRay
+
+		if (hitIndex != -1)
+		{
+
+			int color = voxels[hitIndex];
+			if (color < -1)
+			{
+				float stepAmnt = intBitsToFloat(color) * -1.0f; // this the sdf skipping part
+				
+				if (stepAmnt > 0.0f)
+				{
+									//stepAmnt *= .5f;
+					vec3 newPos = startPosition + rayDirection * (stepAmnt + curDist);
+					distAcume += curDist + stepAmnt;
+					startPosition = newPos;
+					X = int(newPos.x);
+					Y = int(newPos.y);
+					Z = int(newPos.z);
+
+					tMaxX = ((X + int(stepX > 0) * 1) - newPos.x) / rayDirection.x;
+					tMaxY = ((Y + int(stepY > 0) * 1) - newPos.y) / rayDirection.y;
+					tMaxZ = ((Z + int(stepZ > 0) * 1) - newPos.z) / rayDirection.z;
+
+
+
+					//stepAmnt *= 0.166666f;
+					//return  int(flColorToInt(vec4(1, stepAmnt, stepAmnt, stepAmnt)));
+				}
+
+			} 
+			else if (color >= 0)
+			{			
+				hitNormal=vec3(int(hitX) * -stepX, int(hitY) * -stepY, int(hitZ) * -stepZ);
+
+			 	hitPos = startPosition + curDist * rayDirection + hitNormal * .001f;
+				
+				/*int rer = checkIndex(int(hitPos.x), int(hitPos.y), int(hitPos.z));
+				if (rer != -1 &&  voxels[rer] >= 0) testing pos inac
+					return -1;*/
+
+				hitDistance = curDist + distAcume;
+				return color;
 			}
+				
 		}
-		i++;
-	}
-	
-	//cast Y plane ray
-	i=0;
-	while (i*dy*sign(dy) < dist && !axisHit.y){
-		stepCount.y++;
-		currCheckY=i*dy*sign(dy)*rayDirection + firstY;
-		
-		rayLengthY=length(currCheckY - startPosition);
-		yColorIndex=getVoxelIndex(currCheckY, startPosition, lookDir);
-		
-		//test out of bounds
-		axisHit.y=rayLengthY > dist ||
-					currCheckY.x < 0 || currCheckY.x >= VOXELS_WIDTH ||
-					currCheckY.y < 0 || currCheckY.y >= VOXELS_HEIGHT ||
-					currCheckY.z < 0 || currCheckY.z >= VOXELS_WIDTH;
+		else
+			return -1;
 
-		//test hit
-		if (yColorIndex != -1 && voxels[yColorIndex] < -1){
-			i-=voxels[yColorIndex] + 1;
-		}
-		else if (yColorIndex != -1 && voxels[yColorIndex] >= 0 && !axisHit.y){
-			axisHit.y=true;
-
-			//test shortest ray
-			if (rayLengthY < rayLength){
-				hitNormal=vec3(0, -sign(rayDirection.y), 0);
-				fColorIndex=yColorIndex;
-				hitPos=currCheckY;
-				rayLength=rayLengthY;
-			}
-		}
-		i++;
-	}
-
-	//cast Z plane ray
-	i=0;
-	while (i*dz*sign(dz) < dist && !axisHit.z){
-		stepCount.z++;
-		currCheckZ=i*dz*sign(dz)*rayDirection + firstZ;
-
-		rayLengthZ=length(currCheckZ - startPosition);
-		zColorIndex=getVoxelIndex(currCheckZ, startPosition, lookDir);
-		
-		//test out of bounds
-		axisHit.z=rayLengthZ > dist ||
-					currCheckZ.x < 0 || currCheckZ.x >= VOXELS_WIDTH ||
-					currCheckZ.y < 0 || currCheckZ.y >= VOXELS_HEIGHT ||
-					currCheckZ.z < 0 || currCheckZ.z >= VOXELS_WIDTH;
-
-		//test hit
-		if (zColorIndex != -1 && voxels[zColorIndex] < -1){
-			i-=voxels[zColorIndex] + 1;
-		}
-		else if (zColorIndex != -1 && voxels[zColorIndex] >= 0 && !axisHit.z){
-			axisHit.z=true;
-
-			//test shortest ray
-			if (rayLengthZ < rayLength){
-				hitNormal=vec3(0, 0, -sign(rayDirection.z));
-				fColorIndex=zColorIndex;
-				hitPos=currCheckZ;
-				rayLength=rayLengthZ;
-			}
-		}
-		i++;
-	}
-	
-	return fColorIndex;
+		hitX = false;
+		hitY = false;
+		hitZ = false;
+    } 
+   return -1;
 }
 
 void main(){
@@ -196,29 +198,31 @@ void main(){
 
 	//init our ray direction
 	vec3 rayDirection=normalize(vec3(vPos.x*aspectRatio, vPos.y, 1.0f));
-	vec3 rotatedDir=vec3(rotateMatrix * vec4(rayDirection, 0));
+	vec3 rotatedDir=normalize(vec3(rotateMatrix * vec4(rayDirection, 0)));
 	
-	int fColorIndex=castRay(camPos, rotatedDir, camDir, RENDER_DIST);
+	int color=castRay(camPos, rotatedDir, camDir, RENDER_DIST);
 	
+	#ifdef DEPTH_DEBUG
 	if (viewDepthField == 1){
 		fColor=vec4(stepCount/50, 1);
 	}
-	else{
-		vec3 toLight=normalize(lightPos - hitPos);
-		
+	else 
+	#endif
+	{			
 		float multiplier=AMBIENT;
 		
 		//apply color of shortest ray
-		if (fColorIndex != -1 && voxels[fColorIndex] >= 0){
+		if (color != -1){
+			vec3 toLight=normalize(lightPos - hitPos);
 			//cast shadow ray
-			if (castRay(hitPos + toLight*0.001f, toLight, toLight, RENDER_DIST>>2) == -1){
+			if (castRay(hitPos + toLight*0.001f, toLight, toLight, RENDER_DIST * .5f) == -1){
 				multiplier=AMBIENT + DIFFUSE*max(0, dot(hitNormal, toLight));
 			}
 			
 			//color of voxels is stored in a single int to save memory, we use bitwise ops to extract RGB values
-			fColor.r=float((voxels[fColorIndex] & 0x00FF0000) >> 16) / 255.0f * multiplier;
-			fColor.g=float((voxels[fColorIndex] & 0x0000FF00) >> 8) / 255.0f * multiplier;
-			fColor.b=float(voxels[fColorIndex] & 0x000000FF) / 255.0f * multiplier;
+			fColor.r=float((color & 0x00FF0000) >> 16) / 255.0f * multiplier;
+			fColor.g=float((color & 0x0000FF00) >> 8) / 255.0f * multiplier;
+			fColor.b=float(color & 0x000000FF) / 255.0f * multiplier;
 			fColor.a=1.0f;
 		}
 	}
