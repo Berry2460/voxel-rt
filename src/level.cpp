@@ -1,4 +1,5 @@
 #include "level.hpp"
+#include "render.hpp"
 
 void placeBush(glm::ivec3 pos, glm::ivec3 color, int radius){
     for (int z = -radius; z < radius; z++) {
@@ -34,7 +35,6 @@ void removeSphere(glm::ivec3 pos, int radius){
                     x + pos.x >= 0 && y + pos.y >= 0 && z + pos.z >= 0) {
                     if (x * x + y * y + z * z < radius * radius){
 						destroyVoxel(x+pos.x, y+pos.y, z+pos.z);
-						fixDepthField(x+pos.x, y+pos.y, z+pos.z);
                     }
                 }
             }
@@ -122,4 +122,5 @@ void initVoxels(){
             }
         }
     }
+	clearSDFQueue(); // we already calculating the sdf for this pass at init
 }
