@@ -3,6 +3,30 @@
 #include "level.hpp"
 
 #include <iostream>
+#include <vector>
+#include <queue>
+#include <algorithm>
+#include <cmath>
+#include <unordered_set>
+
+#define SDF_RADIUS 10
+
+struct SDFType
+{
+	glm::ivec3 pos;
+	float distance;
+};
+
+std::vector<SDFType> radiusField = {};
+std::vector<glm::ivec3> queuedSDFUpdate = {};
+
+void clearSDFQueue(){
+	queuedSDFUpdate.clear();
+}
+
+int radiusFieldSize = 0;
+
+int ***tempVoxels = nullptr;
 
 const int NumVertices = 6;
 
@@ -108,7 +132,9 @@ GLuint InitShader(const char* vShaderFile, const char* fShaderFile){
 	return program;
 }
 
-
+bool voxelInBounds(int x, int y, int z){
+	return (x >= 0 && y >= 0 && z >= 0 && x < VOXELS_WIDTH && y < VOXELS_HEIGHT && z < VOXELS_WIDTH);
+}
 int getVoxelIndex(int x, int y, int z){
 	int index = x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
 	return index;
@@ -122,68 +148,12 @@ void updateGeometry(){
 }
 
 
-void fixDepthFieldRecurse(int x, int y, int z, int range){
-	int index=getVoxelIndex(x, y, z);
-
-	int middle=range>>1;
-	bool done=false;
-	
-	for (int zCheck=0; zCheck<range && !done; zCheck++){
-		for (int yCheck=0; yCheck<range && !done; yCheck++){
-			for (int xCheck=0; xCheck<range && !done; xCheck++){
-				//snap XY to other side once Z is in the middle portion
-				if (yCheck > 0 && yCheck < range-1 && zCheck > 0 && zCheck < range-1){
-					yCheck=range-1;
-				}
-				if (xCheck > 0 && xCheck < range-1 && zCheck > 0 && zCheck < range-1){
-					xCheck=range-1;
-				}
-				int xPoint=xCheck-middle + x;
-				int yPoint=yCheck-middle + y;
-				int zPoint=zCheck-middle + z;
-				int indexCheck=getVoxelIndex(xPoint, yPoint, zPoint);
-				
-				//check point is valid
-				if (xPoint >= 0 && yPoint >=0 && zPoint >=0 && indexCheck < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
-					//logic for empty voxel
-					if (voxels[index] < 0){
-						//check if we found a solid voxel
-						if (voxels[indexCheck] > -1){
-							done=true;
-							voxels[index]=-middle;
-						}
-					}
-					//logic for solid voxel
-					else if (voxels[indexCheck] < -middle){
-						voxels[indexCheck]=-middle;
-					}
-					else{
-						done=true;
-					}
-				}
-			}
-		}
-	}
-	if (!done && range < MAX_DEPTH_FIELD){
-		fixDepthFieldRecurse(x, y, z, range+2);
-	}
-	//add minDepth if all space was empty and voxel is empty
-	else if (!done && voxels[index] < 0){
-		voxels[index]=-middle - 1;
-	}
-}
-
-
-void fixDepthField(int x, int y, int z){
-	fixDepthFieldRecurse(x, y, z, MIN_DEPTH_FIELD);
-}
-
-
 void placeVoxel(int x, int y, int z, int voxel){
 	int index=getVoxelIndex(x, y, z);
 	
 	if (x >= 0 && y >= 0 && z >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
 		voxels[index]=voxel;
+		queuedSDFUpdate.emplace_back(glm::ivec3{x, y, z});
 	}
 }
 
@@ -193,16 +163,211 @@ void destroyVoxel(int x, int y, int z){
 	
 	if (x >= 0 && y >= 0 && z >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
 		voxels[index] = -1;
+		queuedSDFUpdate.emplace_back(glm::ivec3{x, y, z});
 	}
 }
 
-void computeDepthField(){
-	for (int z = 0; z < VOXELS_WIDTH; z++){
-		for (int y = 0; y < VOXELS_HEIGHT; y++){
-			for (int x = 0; x < VOXELS_WIDTH; x++){
-				fixDepthField(x, y, z);
+std::vector<SDFType> generateSDFOffsets(int radius)
+{
+	std::vector<SDFType> offsets = {};
+
+	for (int x = -radius; x <= radius; ++x)
+	{
+		for (int y = -radius; y <= radius; ++y)
+		{
+			for (int z = -radius; z <= radius; ++z)
+			{
+				if (x * x + y * y + z * z <= radius * radius)
+				{
+					float dist = 0.f;
+
+					if (abs(x) > 1 || abs(y) > 1 || abs(z) > 1)
+					{
+						glm::vec3 offPos = {x, y, z};
+
+						if (x > 0)
+							offPos.x -= 1.f;
+						else if (x < 0)
+							offPos.x += 1.f;
+
+						if (y > 0)
+							offPos.y -= 1.f;
+						else if (y < 0)
+							offPos.y += 1.f;
+
+						if (z > 0)
+							offPos.z -= 1.f;
+						else if (z < 0)
+							offPos.z += 1.f;
+
+						dist = sqrt(offPos.x * offPos.x + offPos.y * offPos.y + offPos.z * offPos.z);
+					}
+
+					offsets.emplace_back(SDFType{glm::ivec3(x, y, z), dist});
+				}
 			}
 		}
+	}
+
+	std::sort(offsets.begin(), offsets.end(), [](const SDFType &a, const SDFType &b)
+			  { return a.distance < b.distance; });
+
+	return offsets;
+}
+
+float findFirstNonEmptyVoxel(int startX, int startY, int startZ)
+{
+	if (voxels[getVoxelIndex(startX,startY,startZ)] >= 0)
+		return 0.f;
+	for (int i = 0; i < radiusFieldSize; i++)
+	{
+		const auto &offset = radiusField[i];
+
+		int newX = startX + offset.pos.x;
+		int newY = startY + offset.pos.y;
+		int newZ = startZ + offset.pos.z;
+
+		if (!voxelInBounds(newX, newY, newZ) || voxels[getVoxelIndex(newX, newY, newZ)] >= 0)
+		{
+			return offset.distance;
+		}
+	}
+
+	return SDF_RADIUS - 1;
+}
+
+float findFirstNonEmptyVoxelINIT(int startX, int startY, int startZ) // only for init in computeDepthField
+{
+	if  (tempVoxels[startX][startY][startZ] >= 0)
+		return  0.f;
+	for (int i = 0; i < radiusFieldSize; i++)
+	{
+		const auto &offset = radiusField[i];
+
+		int newX = startX + offset.pos.x;
+		int newY = startY + offset.pos.y;
+		int newZ = startZ + offset.pos.z;
+
+		if (!voxelInBounds(newX, newY, newZ) || tempVoxels[newX][newY][newZ] >= 0)
+		{
+			return offset.distance;
+		}
+	}
+
+	return SDF_RADIUS - 1;
+}
+
+void computeDepthField(){
+	radiusField = generateSDFOffsets(SDF_RADIUS);
+	tempVoxels = new int **[VOXELS_WIDTH];
+	for (int x = 0; x < VOXELS_WIDTH; x++)
+	{
+		tempVoxels[x] = new int *[VOXELS_HEIGHT];
+		for (int y = 0; y < VOXELS_HEIGHT; y++)
+		{
+			tempVoxels[x][y] = new int[VOXELS_WIDTH];
+
+			for (int z = 0; z < VOXELS_WIDTH; z++)
+			{
+				tempVoxels[x][y][z] = voxels[getVoxelIndex(x, y, z)];
+			}
+		}
+	}
+
+	radiusFieldSize = radiusField.size();
+	float percent = 1.f / VOXELS_WIDTH;
+
+	for (int z = 0; z < VOXELS_WIDTH; z++)
+	{
+		for (int y = 0; y < VOXELS_HEIGHT; y++)
+		{
+			for (int x = 0; x < VOXELS_WIDTH; x++)
+			{
+
+				if (tempVoxels[x][y][z] < 0)
+				{
+					float dist = findFirstNonEmptyVoxelINIT(x, y, z);
+
+					if (dist > 0.f)
+					{
+						//std::cout << "dist = " << dist << std::endl;
+						dist *= -1.f;
+						voxels[getVoxelIndex(x, y, z)] = *(int*)&dist;
+					}				
+				}				
+			}			
+		}
+
+		std::cout << "sdf generation percent = " << z * percent * 100.0f << std::endl;
+	}
+
+	for (int x = 0; x < VOXELS_WIDTH; x++)
+	{	
+		for (int y = 0; y < VOXELS_HEIGHT; y++)
+		{
+			delete[] tempVoxels[x][y];
+		}
+		delete[] tempVoxels[x];
+	}
+	delete[] tempVoxels;
+}
+
+namespace std
+{
+	template <>
+	struct hash<glm::ivec3>
+	{
+		size_t operator()(const glm::ivec3 &p) const
+		{
+			return hash<int>()(p.x) ^ (hash<int>()(p.y) << 1) ^ (hash<int>()(p.z) << 2);
+		}
+	};
+}
+
+std::unordered_set<glm::ivec3> sdfCheckSet = {};
+void updateSDFCheckSet(int x, int y, int z)
+{
+	for (int i = 0; i < radiusFieldSize; i++)
+	{
+		const auto &offset = radiusField[i];
+
+		int newX = x + offset.pos.x;
+		int newY = y + offset.pos.y;
+		int newZ = z + offset.pos.z;
+
+		if (voxelInBounds(newX, newY, newZ) && voxels[getVoxelIndex(newX, newY, newZ)] < 0)
+		{
+			sdfCheckSet.insert(glm::ivec3{newX, newY, newZ}); // so we dont check the same pos multiple times
+		}
+	}
+}
+
+void runtimeSDFUpdates()
+{
+	if (!queuedSDFUpdate.empty())
+	{
+		sdfCheckSet.clear();
+
+		for (const glm::ivec3 &pos : queuedSDFUpdate)
+		{
+			updateSDFCheckSet(pos.x, pos.y, pos.z);
+		}
+		queuedSDFUpdate.clear();
+		for (const glm::ivec3 &pos : sdfCheckSet)
+		{
+			float dist = findFirstNonEmptyVoxel(pos.x, pos.y, pos.z);
+
+			if (dist > 0.f)
+			{
+				 //std::cout << "dist = " << dist << std::endl;
+				dist *= -1.f;
+				voxels[getVoxelIndex(pos.x, pos.y, pos.z)] = *(int *)&dist;
+			}
+		}
+
+		sdfCheckSet.clear();
+
+		updateGeometry();
 	}
 }
 
