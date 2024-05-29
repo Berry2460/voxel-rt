@@ -143,7 +143,7 @@ int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, float dist){
 			int color = voxels[hitIndex];
 			if (color < -1)
 			{
-				float stepAmnt = intBitsToFloat(color) * -1.0f;
+				float stepAmnt = intBitsToFloat(color) * -1.0f; // this the sdf skipping part
 				
 				if (stepAmnt > 0.0f)
 				{
