@@ -9,7 +9,7 @@
 #include <cmath>
 #include <unordered_set>
 
-#define SDF_RADIUS 10
+#define SDF_RADIUS 4
 
 struct SDFType
 {
