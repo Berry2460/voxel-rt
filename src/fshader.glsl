@@ -54,6 +54,8 @@ int checkIndex(int X, int Y, int Z){
 //https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/amanatidesWooAlgorithm.cpp
 //https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview/FastVoxelTraversalOverview.md
 int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, float dist){
+	rayDirection = normalize(rayDirection);
+
 	// u->
 	int X = int(startPosition.x);
 	int Y = int(startPosition.y);
@@ -75,6 +77,7 @@ int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, float dist){
 
 	// algorithm = u-> + t * v-> for >= 0 
 
+	float distAcume = 0.0f;
 	float curDist = 0.0f;
 	int hitIndex = -1;
 
@@ -129,15 +132,51 @@ int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, float dist){
           } 
         } 
 
+
+
 		hitIndex = checkIndex(X,Y,Z);
+		//castRay
 
 		if (hitIndex != -1)
 		{
+
 			int color = voxels[hitIndex];
-			if (color >= 0)
+			if (color < -1)
+			{
+				float stepAmnt = intBitsToFloat(color) * -1.0f;
+				
+				if (stepAmnt > 0.0f)
+				{
+									//stepAmnt *= .5f;
+					vec3 newPos = startPosition + rayDirection * (stepAmnt + curDist);
+					distAcume += curDist + stepAmnt;
+					startPosition = newPos;
+					X = int(newPos.x);
+					Y = int(newPos.y);
+					Z = int(newPos.z);
+
+					tMaxX = ((X + int(stepX > 0) * 1) - newPos.x) / rayDirection.x;
+					tMaxY = ((Y + int(stepY > 0) * 1) - newPos.y) / rayDirection.y;
+					tMaxZ = ((Z + int(stepZ > 0) * 1) - newPos.z) / rayDirection.z;
+
+
+
+					//stepAmnt *= 0.166666f;
+					//return  int(flColorToInt(vec4(1, stepAmnt, stepAmnt, stepAmnt)));
+				}
+
+			} 
+			else if (color >= 0)
 			{			
 				hitNormal=vec3(int(hitX) * -stepX, int(hitY) * -stepY, int(hitZ) * -stepZ);
-			 	hitPos = startPosition + curDist * rayDirection;		
+
+			 	hitPos = startPosition + curDist * rayDirection + hitNormal * .001f;
+				
+				/*int rer = checkIndex(int(hitPos.x), int(hitPos.y), int(hitPos.z));
+				if (rer != -1 &&  voxels[rer] >= 0) testing pos inac
+					return -1;*/
+
+				hitDistance = curDist + distAcume;
 				return color;
 			}
 				
