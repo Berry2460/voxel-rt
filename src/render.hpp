@@ -30,3 +30,4 @@ void lightUpdate();
 void updateUniforms();
 void removeSphere(glm::ivec3 pos, int radius);
 void reshape(int width, int height);
+void clearSDFQueue();
