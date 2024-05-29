@@ -27,6 +27,7 @@ uniform int viewDepthField;
 
 vec3 hitPos=vec3(0,0,0);
 vec3 hitNormal=vec3(0,0,0);
+float hitDistance = 0.0f;
 
 #ifdef DEPTH_DEBUG
 vec3 stepCount=vec3(0,0,0);
