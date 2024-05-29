@@ -53,6 +53,7 @@ int main(){
 		doDestroy();
 		
 		updateUniforms();
+		runtimeSDFUpdates();
 	}
 	return 0;
 }
