@@ -324,53 +324,90 @@ namespace std
 	};
 }
 
-std::unordered_set<glm::ivec3> sdfCheckSet = {};
-void updateSDFCheckSet(int x, int y, int z)
-{
-	for (int i = 0; i < radiusFieldSize; i++)
-	{
-		const auto &offset = radiusField[i];
-
-		int newX = x + offset.pos.x;
-		int newY = y + offset.pos.y;
-		int newZ = z + offset.pos.z;
-
-		if (voxelInBounds(newX, newY, newZ) && voxels[getVoxelIndex(newX, newY, newZ)] < 0)
-		{
-			sdfCheckSet.insert(glm::ivec3{newX, newY, newZ}); // so we dont check the same pos multiple times
-		}
-	}
-}
-
 void runtimeSDFUpdates()
 {
 	if (!queuedSDFUpdate.empty())
 	{
-		sdfCheckSet.clear();
+		std::unordered_set<glm::ivec3> sdfCheckSet = {};
 
 		for (const glm::ivec3 &pos : queuedSDFUpdate)
 		{
-			updateSDFCheckSet(pos.x, pos.y, pos.z);
-		}
-		queuedSDFUpdate.clear();
-		for (const glm::ivec3 &pos : sdfCheckSet)
-		{
-			float dist = findFirstNonEmptyVoxel(pos.x, pos.y, pos.z);
-
-			if (dist > 0.f)
+			for (int i = 0; i < radiusFieldSize; i++)
 			{
-				 //std::cout << "dist = " << dist << std::endl;
-				dist *= -1.f;
-				voxels[getVoxelIndex(pos.x, pos.y, pos.z)] = *(int *)&dist;
+				const auto &offset = radiusField[i];
+
+				int newX = pos.x + offset.pos.x;
+				int newY = pos.y + offset.pos.y;
+				int newZ = pos.z + offset.pos.z;
+
+				if (voxelInBounds(newX, newY, newZ) && voxels[getVoxelIndex(newX, newY, newZ)] < 0)
+				{
+					sdfCheckSet.insert(glm::ivec3{newX, newY, newZ}); // so we dont check the same pos multiple times
+				}
 			}
 		}
 
-		sdfCheckSet.clear();
+		int ichk = 0;
+		std::vector<int> orderedIndexes(sdfCheckSet.size() + queuedSDFUpdate.size());
+		// orderedIndexes.resize(sdfCheckSet.size() + queuedSDFUpdate.size());
+		for (const glm::ivec3 &pos : queuedSDFUpdate)
+		{
+			orderedIndexes[ichk] = getVoxelIndex(pos.x, pos.y, pos.z);
+			ichk += 1;
+		}
 
-		updateGeometry();
+		for (const glm::ivec3 &pos : sdfCheckSet)
+		{
+
+			float dist = findFirstNonEmptyVoxel(pos.x, pos.y, pos.z);
+
+			int index = getVoxelIndex(pos.x, pos.y, pos.z);
+
+			if (dist > 0.f)
+			{
+				// std::cout << "dist = " << dist << std::endl;
+				dist *= -1.f;
+				voxels[index] = *(int *)&dist;
+			}
+			else
+				voxels[index] = -1;
+
+			orderedIndexes[ichk] = index;
+
+			// glBufferSubData(GL_SHADER_STORAGE_BUFFER, index * 4, 4, &voxels[index]);
+			ichk += 1;
+		}
+
+		std::sort(orderedIndexes.begin(), orderedIndexes.end(), [](const int &a, const int &b)
+				  { return a < b; });
+
+		int lastCheckIndex = orderedIndexes[0];
+		int lastStartIndex = lastCheckIndex;
+
+		int chkEnd = ichk - 1;
+
+		for (int i = 0; i < ichk; i++)
+		{
+			int &curIndex = orderedIndexes[i];
+			int chkDelta = curIndex - lastCheckIndex;
+
+			if (i == chkEnd || chkDelta > 1)
+			{
+				// std::cout << lastStartIndex << std::endl;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, lastStartIndex * 4, (lastCheckIndex - lastStartIndex) * 4 + 4, &voxels[lastStartIndex]);
+
+				lastCheckIndex = curIndex;
+				lastStartIndex = curIndex;
+			}
+			else
+			{
+				lastCheckIndex = curIndex;
+			}
+		}
+
+		queuedSDFUpdate.clear();
 	}
 }
-
 
 void updateUniforms(){
 	glUniform1f(AspectRatio, aspectRatio);
