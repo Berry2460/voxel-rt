@@ -3,8 +3,7 @@
 
 #define VOXELS_WIDTH 512
 #define VOXELS_HEIGHT 96
-#define MIN_DEPTH_FIELD 3
-#define MAX_DEPTH_FIELD 7
+#define DEPTH_FIELD_RADIUS 5
 
 extern const int NumVertices;
 

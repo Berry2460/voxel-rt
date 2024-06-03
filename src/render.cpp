@@ -2,9 +2,22 @@
 #include "controls.hpp"
 #include "level.hpp"
 
+#include <pthread.h>
+#include <atomic>
 #include <iostream>
 
+#define THREAD_COUNT 4
+
 const int NumVertices = 6;
+
+struct depthThreadData{
+	int start;
+	int end;
+};
+
+static pthread_t genThread[THREAD_COUNT];
+struct depthThreadData threadData[THREAD_COUNT];
+std::atomic<int> depthGenerationDone;
 
 // Vertices for fullscreen coverage
 glm::vec4 vertices[NumVertices] = {
@@ -18,7 +31,7 @@ glm::vec4 vertices[NumVertices] = {
 };
 
 //uniform locations
-GLuint ssbo, AspectRatio, CamDir, CamPos, CamRotation, LightPos, RotateMatrix, ViewDepthField;
+GLuint ssbo, AspectRatio, CamPos, CamRotation, LightPos, RotateMatrix, ViewDepthField;
 
 // Create a NULL-terminated string by reading the provided file
 static char* readShaderSource(const char* shaderFile){
@@ -102,15 +115,16 @@ GLuint InitShader(const char* vShaderFile, const char* fShaderFile){
 		exit( EXIT_FAILURE );
 	}
 
-	/* use program object */
-	glUseProgram(program);
-
 	return program;
 }
 
 
 int getVoxelIndex(int x, int y, int z){
-	int index = x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
+	int index=-1;
+	
+	if (x >= 0 && y >= 0 && z >= 0 && x < VOXELS_WIDTH && y < VOXELS_HEIGHT && z <VOXELS_WIDTH){
+		index=x + (VOXELS_WIDTH * y) + (VOXELS_WIDTH * VOXELS_HEIGHT * z);
+	}
 	return index;
 }
 
@@ -122,67 +136,50 @@ void updateGeometry(){
 }
 
 
-void fixDepthFieldRecurse(int x, int y, int z, int range){
+void fixDepthField(int x, int y, int z){
 	int index=getVoxelIndex(x, y, z);
-
-	int middle=range>>1;
-	bool done=false;
+	float dist=-DEPTH_FIELD_RADIUS+1;
+	float nearestDist=dist;
 	
-	for (int zCheck=0; zCheck<range && !done; zCheck++){
-		for (int yCheck=0; yCheck<range && !done; yCheck++){
-			for (int xCheck=0; xCheck<range && !done; xCheck++){
-				//snap XY to other side once Z is in the middle portion
-				if (yCheck > 0 && yCheck < range-1 && zCheck > 0 && zCheck < range-1){
-					yCheck=range-1;
-				}
-				if (xCheck > 0 && xCheck < range-1 && zCheck > 0 && zCheck < range-1){
-					xCheck=range-1;
-				}
-				int xPoint=xCheck-middle + x;
-				int yPoint=yCheck-middle + y;
-				int zPoint=zCheck-middle + z;
-				int indexCheck=getVoxelIndex(xPoint, yPoint, zPoint);
-				
-				//check point is valid
-				if (xPoint >= 0 && yPoint >=0 && zPoint >=0 && indexCheck < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
-					//logic for empty voxel
-					if (voxels[index] < 0){
-						//check if we found a solid voxel
-						if (voxels[indexCheck] > -1){
-							done=true;
-							voxels[index]=-middle;
+	if (index >= 0 && voxels[index] < 0){
+		for (int zCheck=-DEPTH_FIELD_RADIUS; zCheck<=DEPTH_FIELD_RADIUS; zCheck++){
+			for (int yCheck=-DEPTH_FIELD_RADIUS; yCheck<=DEPTH_FIELD_RADIUS; yCheck++){
+				for (int xCheck=-DEPTH_FIELD_RADIUS; xCheck<=DEPTH_FIELD_RADIUS; xCheck++){
+					if (xCheck*xCheck + yCheck*yCheck + zCheck*zCheck <= DEPTH_FIELD_RADIUS*DEPTH_FIELD_RADIUS){
+						int xPoint=xCheck+x;
+						int yPoint=yCheck+y;
+						int zPoint=zCheck+z;
+						int xDist=xCheck - (xCheck > 0) + (xCheck < 0);
+						int yDist=yCheck - (yCheck > 0) + (yCheck < 0);
+						int zDist=zCheck - (zCheck > 0) + (zCheck < 0);
+						
+						int indexCheck=getVoxelIndex(xPoint, yPoint, zPoint);
+						dist=-sqrt(xDist*xDist + yDist*yDist + zDist*zDist);
+						
+						//check point is valid
+						if (voxels[indexCheck] >= 0 && dist > nearestDist){
+							if (dist <= -2.0f){
+								nearestDist=dist;
+							}
+							else{
+								nearestDist=0;
+							}
 						}
-					}
-					//logic for solid voxel
-					else if (voxels[indexCheck] < -middle){
-						voxels[indexCheck]=-middle;
-					}
-					else{
-						done=true;
 					}
 				}
 			}
 		}
+		if (nearestDist < 0){
+			voxels[index]=*(int*)&nearestDist;
+		}
 	}
-	if (!done && range < MAX_DEPTH_FIELD){
-		fixDepthFieldRecurse(x, y, z, range+2);
-	}
-	//add minDepth if all space was empty and voxel is empty
-	else if (!done && voxels[index] < 0){
-		voxels[index]=-middle - 1;
-	}
-}
-
-
-void fixDepthField(int x, int y, int z){
-	fixDepthFieldRecurse(x, y, z, MIN_DEPTH_FIELD);
 }
 
 
 void placeVoxel(int x, int y, int z, int voxel){
 	int index=getVoxelIndex(x, y, z);
 	
-	if (x >= 0 && y >= 0 && z >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
+	if (index >= 0){
 		voxels[index]=voxel;
 	}
 }
@@ -196,25 +193,33 @@ void destroyVoxel(int x, int y, int z){
 	}
 }
 
-void computeDepthField(){
-	for (int z = 0; z < VOXELS_WIDTH; z++){
+static void* computeDepthField(void* threadData){
+	struct depthThreadData* data=(struct depthThreadData*)threadData;
+	
+	for (int z = data->start; z < data->end; z++){
 		for (int y = 0; y < VOXELS_HEIGHT; y++){
 			for (int x = 0; x < VOXELS_WIDTH; x++){
 				fixDepthField(x, y, z);
 			}
 		}
 	}
+	depthGenerationDone++;
+	return NULL;
 }
 
 
 void updateUniforms(){
 	glUniform1f(AspectRatio, aspectRatio);
 	glUniform3f(CamPos, camPos.x, camPos.y, camPos.z);
-	glUniform3f(CamDir, camDir.x, camDir.y, camDir.z);
 	glUniform2f(CamRotation, camRotation.x, camRotation.y);
 	glUniform3f(LightPos, lightPos.x, lightPos.y, lightPos.z);
 	glUniformMatrix4fv(RotateMatrix, 1, GL_FALSE, glm::value_ptr(rotateMatrix));
 	glUniform1i(ViewDepthField, viewDepthField);
+	
+	if (depthGenerationDone == THREAD_COUNT){
+		updateGeometry();
+		depthGenerationDone=false;
+	}
 }
 
 
@@ -241,7 +246,6 @@ void initRender(){
 
 	// Retrieve transformation uniform variable locations
 	CamPos = glGetUniformLocation(program, "camPos");
-	CamDir = glGetUniformLocation(program, "camDir");
 	CamRotation = glGetUniformLocation(program, "camRotation");
 	AspectRatio = glGetUniformLocation(program, "aspectRatio");
 	LightPos = glGetUniformLocation(program, "lightPos");
@@ -256,7 +260,13 @@ void initRender(){
 		voxels[i]=-1;
 	}
 	initVoxels();
-	computeDepthField();
+	
+	//threaded depth field generation
+	for (int i=0; i<THREAD_COUNT; i++){
+		threadData[i].start=i*(VOXELS_WIDTH/THREAD_COUNT);
+		threadData[i].end=(i+1)*(VOXELS_WIDTH/THREAD_COUNT);
+		pthread_create(&genThread[i], NULL, computeDepthField, (void*)&threadData[i]);
+	}
 	
 	//load voxels into GPU
 	glGenBuffers(2, &ssbo);

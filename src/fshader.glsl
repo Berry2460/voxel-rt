@@ -15,7 +15,6 @@ in vec4 vPos;
 out vec4 fColor;
 
 uniform vec3 camPos;
-uniform vec3 camDir;
 uniform vec2 camRotation;
 uniform vec3 lightPos;
 uniform float aspectRatio;
@@ -25,166 +24,98 @@ uniform int viewDepthField;
 vec3 hitPos=vec3(0,0,0);
 vec3 hitNormal=vec3(0,0,0);
 
-vec3 stepCount=vec3(0,0,0);
+float stepCount=0.0f;
 
-int getVoxelIndex(vec3 currCheck, vec3 startPosition, vec3 lookDir){
+int getVoxelIndex(ivec3 currCheck){
 	int hit=-1;
 
-	//make sure we do not collide with objects behind the camera on accident
-	if (dot(currCheck-startPosition, lookDir) > 0){
-		//convert our vector into a 3D array index
-		int checkX=int(currCheck.x);
-		int checkY=int(currCheck.y) * VOXELS_WIDTH;
-		int checkZ=int(currCheck.z) * VOXELS_WIDTH * VOXELS_HEIGHT;
+	//convert our vector into a 3D array index
+	currCheck.y*=VOXELS_WIDTH;
+	currCheck.z*=VOXELS_WIDTH * VOXELS_HEIGHT;
+	int index=currCheck.x+currCheck.y+currCheck.z;
 
-		//check if the index is within array bounds
-		if (checkZ+checkY+checkX < VOXELS_WIDTH*VOXELS_HEIGHT*VOXELS_WIDTH &&
-			checkZ >= 0 && checkZ < VOXELS_WIDTH*VOXELS_HEIGHT*VOXELS_WIDTH &&
-			checkY >= 0 && checkY < VOXELS_WIDTH*VOXELS_HEIGHT &&
-			checkX >= 0 && checkX < VOXELS_WIDTH){
+	//check if the index is within array bounds
+	if (index < VOXELS_WIDTH*VOXELS_HEIGHT*VOXELS_WIDTH &&
+		currCheck.z >= 0 && currCheck.z < VOXELS_WIDTH*VOXELS_HEIGHT*VOXELS_WIDTH &&
+		currCheck.y >= 0 && currCheck.y < VOXELS_WIDTH*VOXELS_HEIGHT &&
+		currCheck.x >= 0 && currCheck.x < VOXELS_WIDTH){
 
-			//hit voxel
-			hit=checkZ+checkY+checkX;
-		}
+		//hit voxel
+		hit=index;
 	}
 	
 	return hit;
 }
 
-int castRay(vec3 startPosition, vec3 rayDirection, vec3 lookDir, int dist){ //NOTE: rayDirection should be normalized
-	//since we are casting rays in 3D space, we need to cast a ray for each axis
-	//each axis ray will only be able to collide with planes on its respective axis
-	//after each ray has collided with a plane on its own axis, we take the color value of the shortest ray
+ivec3 vec3ToIntVec3(vec3 oldVec){
+	ivec3 newVec=ivec3(int(oldVec.x), int(oldVec.y), int(oldVec.z));
+	return newVec;
+}
 
+int castRay(vec3 startPosition, vec3 rayDirection, int dist){ //NOTE: rayDirection should be normalized
 	//record which axis rays have hit a plane
-	bvec3 axisHit=bvec3(false, false ,false);
-	
-	//record what color index each ray hits
-	int xColorIndex=-1;
-	int yColorIndex=-1;
-	int zColorIndex=-1;
-
-	//color index of the shortest ray
-	int fColorIndex=-1;
+	bvec3 axisHit=bvec3(false, false, false);
 	
 	//storage for ray steps
-	vec3 currCheckX;
-	vec3 currCheckY;
-	vec3 currCheckZ;
+	ivec3 currCheck=vec3ToIntVec3(startPosition);
 
-	//store ray lengths to test out of bounds
-	float rayLength=RENDER_DIST;
-	float rayLengthX=rayLength;
-	float rayLengthY=rayLength;
-	float rayLengthZ=rayLength;
+	//color index of the ray
+	int fColorIndex=-1;
+	int tempIndex=-1;
 
-	//calculate the step intervals each ray takes
-	float dx=1.0f/rayDirection.x;
-	float dy=1.0f/rayDirection.y;
-	float dz=1.0f/rayDirection.z;
-
-	//find the first intersect of each ray
-	vec3 firstX=(int(startPosition.x) - startPosition.x + 0.00001f*sign(dx)) * dx * rayDirection + startPosition;
-	vec3 firstY=(int(startPosition.y) - startPosition.y + 0.00001f*sign(dy)) * dy * rayDirection + startPosition;
-	vec3 firstZ=(int(startPosition.z) - startPosition.z + 0.00001f*sign(dz)) * dz * rayDirection + startPosition;
-
-	//cast X plane ray
-	int i=0;
-	while (i*dx*sign(dx) < dist && !axisHit.x){
-		stepCount.x++;
-		currCheckX=i*dx*sign(dx)*rayDirection + firstX;
-		
-		rayLengthX=length(currCheckX - startPosition);
-		xColorIndex=getVoxelIndex(currCheckX, startPosition, lookDir);
-		
-		//test out of bounds
-		axisHit.x=rayLengthX > dist ||
-					currCheckX.x < 0 || currCheckX.x >= VOXELS_WIDTH ||
-					currCheckX.y < 0 || currCheckX.y >= VOXELS_HEIGHT ||
-					currCheckX.z < 0 || currCheckX.z >= VOXELS_WIDTH;
-
-		//test hit
-		if (xColorIndex != -1 && voxels[xColorIndex] < -1){
-			i-=voxels[xColorIndex] + 1;
-		}
-		else if (xColorIndex != -1 && voxels[xColorIndex] >= 0 && !axisHit.x){
-			axisHit.x=true;
-
-			//test shortest ray
-			if (rayLengthX < rayLength){
-				hitNormal=vec3(-sign(rayDirection.x), 0, 0);
-				fColorIndex=xColorIndex;
-				hitPos=currCheckX;
-				rayLength=rayLengthX;
-			}
-		}
-		i++;
-	}
+	//calculate the step intervals each axis takes
+	ivec3 step=vec3ToIntVec3(vec3(sign(rayDirection.x), sign(rayDirection.y), sign(rayDirection.z)));
+	ivec3 forwardSteps=ivec3(int(step.x > 0), int(step.y > 0), int(step.z > 0));
 	
-	//cast Y plane ray
-	i=0;
-	while (i*dy*sign(dy) < dist && !axisHit.y){
-		stepCount.y++;
-		currCheckY=i*dy*sign(dy)*rayDirection + firstY;
+	float dx=1.0f/abs(rayDirection.x);
+	float dy=1.0f/abs(rayDirection.y);
+	float dz=1.0f/abs(rayDirection.z);
+	
+	//find the first intersect of each axis
+	vec3 intersect=(currCheck + forwardSteps - startPosition) / rayDirection;
+	
+	float currDist=0.0f;
+	while (currDist < dist){
+		stepCount++;
+		//check which axis has the shortest intersect
+		if (intersect.x < intersect.y && intersect.x < intersect.z){
+			currDist=intersect.x;
+			currCheck.x+=step.x;
+			intersect.x+=dx;
+			hitNormal=vec3(-step.x, 0, 0);
+		}
+		else if (intersect.y < intersect.x && intersect.y < intersect.z){
+			currDist=intersect.y;
+			currCheck.y+=step.y;
+			intersect.y+=dy;
+			hitNormal=vec3(0, -step.y, 0);
+		}
+		else{
+			currDist=intersect.z;
+			currCheck.z+=step.z;
+			intersect.z+=dz;
+			hitNormal=vec3(0, 0, -step.z);
+		}
+		tempIndex=getVoxelIndex(currCheck);
 		
-		rayLengthY=length(currCheckY - startPosition);
-		yColorIndex=getVoxelIndex(currCheckY, startPosition, lookDir);
-		
-		//test out of bounds
-		axisHit.y=rayLengthY > dist ||
-					currCheckY.x < 0 || currCheckY.x >= VOXELS_WIDTH ||
-					currCheckY.y < 0 || currCheckY.y >= VOXELS_HEIGHT ||
-					currCheckY.z < 0 || currCheckY.z >= VOXELS_WIDTH;
-
-		//test hit
-		if (yColorIndex != -1 && voxels[yColorIndex] < -1){
-			i-=voxels[yColorIndex] + 1;
+		//ray hit
+		if (tempIndex >= 0 && voxels[tempIndex] >= 0){
+			hitPos=rayDirection*currDist + startPosition;
+			fColorIndex=tempIndex;
+			break;
 		}
-		else if (yColorIndex != -1 && voxels[yColorIndex] >= 0 && !axisHit.y){
-			axisHit.y=true;
-
-			//test shortest ray
-			if (rayLengthY < rayLength){
-				hitNormal=vec3(0, -sign(rayDirection.y), 0);
-				fColorIndex=yColorIndex;
-				hitPos=currCheckY;
-				rayLength=rayLengthY;
-			}
+		//depth field jump
+		else if (tempIndex >= 0 && voxels[tempIndex] != -1){
+			float toJump=-intBitsToFloat(voxels[tempIndex]);
+			currDist+=toJump;
+			startPosition=rayDirection*currDist + startPosition;
+			currCheck=vec3ToIntVec3(startPosition);
+			intersect=(currCheck + forwardSteps - startPosition) / rayDirection;
 		}
-		i++;
-	}
-
-	//cast Z plane ray
-	i=0;
-	while (i*dz*sign(dz) < dist && !axisHit.z){
-		stepCount.z++;
-		currCheckZ=i*dz*sign(dz)*rayDirection + firstZ;
-
-		rayLengthZ=length(currCheckZ - startPosition);
-		zColorIndex=getVoxelIndex(currCheckZ, startPosition, lookDir);
-		
-		//test out of bounds
-		axisHit.z=rayLengthZ > dist ||
-					currCheckZ.x < 0 || currCheckZ.x >= VOXELS_WIDTH ||
-					currCheckZ.y < 0 || currCheckZ.y >= VOXELS_HEIGHT ||
-					currCheckZ.z < 0 || currCheckZ.z >= VOXELS_WIDTH;
-
-		//test hit
-		if (zColorIndex != -1 && voxels[zColorIndex] < -1){
-			i-=voxels[zColorIndex] + 1;
+		//out of bounds
+		else if (tempIndex < 0){
+			break;
 		}
-		else if (zColorIndex != -1 && voxels[zColorIndex] >= 0 && !axisHit.z){
-			axisHit.z=true;
-
-			//test shortest ray
-			if (rayLengthZ < rayLength){
-				hitNormal=vec3(0, 0, -sign(rayDirection.z));
-				fColorIndex=zColorIndex;
-				hitPos=currCheckZ;
-				rayLength=rayLengthZ;
-			}
-		}
-		i++;
 	}
 	
 	return fColorIndex;
@@ -198,10 +129,11 @@ void main(){
 	vec3 rayDirection=normalize(vec3(vPos.x*aspectRatio, vPos.y, 1.0f));
 	vec3 rotatedDir=vec3(rotateMatrix * vec4(rayDirection, 0));
 	
-	int fColorIndex=castRay(camPos, rotatedDir, camDir, RENDER_DIST);
+	int fColorIndex=castRay(camPos, rotatedDir, RENDER_DIST);
+	vec3 firstHitNormal=hitNormal;
 	
 	if (viewDepthField == 1){
-		fColor=vec4(stepCount/50, 1);
+		fColor=vec4(stepCount/100, stepCount/100, stepCount/100, 1);
 	}
 	else{
 		vec3 toLight=normalize(lightPos - hitPos);
@@ -211,8 +143,8 @@ void main(){
 		//apply color of shortest ray
 		if (fColorIndex != -1 && voxels[fColorIndex] >= 0){
 			//cast shadow ray
-			if (castRay(hitPos + toLight*0.001f, toLight, toLight, RENDER_DIST>>2) == -1){
-				multiplier=AMBIENT + DIFFUSE*max(0, dot(hitNormal, toLight));
+			if (castRay(hitPos + toLight*0.001f, toLight, RENDER_DIST>>2) == -1){
+				multiplier=AMBIENT + DIFFUSE*max(0, dot(firstHitNormal, toLight));
 			}
 			
 			//color of voxels is stored in a single int to save memory, we use bitwise ops to extract RGB values
