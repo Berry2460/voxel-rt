@@ -1,4 +1,5 @@
 #include "level.hpp"
+#include "Entity.hpp"
 
 void placeBush(glm::ivec3 pos, glm::ivec3 color, int radius){
     for (int z = -radius; z < radius; z++) {
@@ -133,4 +134,8 @@ void initVoxels(){
             }
         }
     }
+}
+
+void updateEntities(){
+	return; //TODO
 }

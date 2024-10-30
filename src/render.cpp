@@ -1,6 +1,7 @@
 #include "render.hpp"
 #include "controls.hpp"
 #include "level.hpp"
+#include "Entity.hpp"
 
 #include <pthread.h>
 #include <atomic>
@@ -29,6 +30,10 @@ glm::vec4 vertices[NumVertices] = {
     glm::vec4(-1, -1, 0, 1),
     glm::vec4(1, -1, 0, 1),
 };
+
+//Entity testing
+//Entity testE=new Entity(10, 10, 10);
+//testE.move(25,25,20);
 
 //uniform locations
 GLuint ssbo, AspectRatio, CamPos, CamRotation, LightPos, RotateMatrix, ViewDepthField;
@@ -279,7 +284,7 @@ void initRender(){
 
 
 void lightUpdate(){
-    float increment = 0.004f;
+    float increment = 0.3f / fps;
     glm::mat4 rot=glm::mat4(1.0f);
 
     if (lightRotation >= 360.0f) {

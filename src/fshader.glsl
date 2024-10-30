@@ -75,7 +75,7 @@ int castRay(vec3 startPosition, vec3 rayDirection, int dist){ //NOTE: rayDirecti
 	vec3 intersect=(currCheck + forwardSteps - startPosition) / rayDirection;
 	
 	float currDist=0.0f;
-	while (currDist < dist){
+	while (currDist < dist && stepCount < RENDER_DIST){
 		stepCount++;
 		//check which axis has the shortest intersect
 		if (intersect.x < intersect.y && intersect.x < intersect.z){

@@ -4,6 +4,7 @@
 #define VOXELS_WIDTH 512
 #define VOXELS_HEIGHT 96
 #define DEPTH_FIELD_RADIUS 5
+#define ENTITY_CHUNK_SIZE 32
 
 extern const int NumVertices;
 
@@ -18,6 +19,8 @@ extern float aspectRatio;
 extern float lightRotation;
 
 extern int viewDepthField;
+
+extern bool* entityMap;
 
 void updateGeometry();
 void initRender();

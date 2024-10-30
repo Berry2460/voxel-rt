@@ -1,6 +1,7 @@
 #include "window.hpp"
 #include "render.hpp"
 #include "controls.hpp"
+#include "Entity.hpp"
 
 //window globals
 long long fps;
@@ -34,6 +35,11 @@ glm::vec3 lightPos = startLightPos;
 float aspectRatio = (float)screenWidth / screenHeight;
 float lightRotation = -45.0f;
 
+//entity data
+bool* entityMap=new bool[VOXELS_WIDTH/ENTITY_CHUNK_SIZE * 
+						VOXELS_WIDTH/ENTITY_CHUNK_SIZE * 
+						VOXELS_HEIGHT/ENTITY_CHUNK_SIZE];
+
 //game loop
 int main(){
 	
@@ -51,6 +57,7 @@ int main(){
 		doMouseLook();
 		doGravity();
 		doDestroy();
+		//updateEntities();
 		
 		updateUniforms();
 	}

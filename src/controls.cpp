@@ -20,7 +20,7 @@ int collided(){
 
 
 void movementUpdate(){
-    float speed = 0.3f;
+    float speed = 36.0f / fps;
     glm::mat4 rot=glm::mat4(1.0f);
     rot = glm::rotate(rot, glm::radians(90.0f), glm::vec3(0, 1, 0));
 	glm::vec3 frontStep = glm::normalize(glm::vec3(camDir.x, 0, camDir.z)) * speed; //ignore Y axis
@@ -47,7 +47,7 @@ void movementUpdate(){
 	if (keys[SPACE]){
 		int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
 		if (voxels[index] > -1 && gravity == 0.0f){
-			gravity+=0.4f;
+			gravity+=35.0f;
 		}
     }
 	if (keys[SHIFT]){
@@ -72,7 +72,7 @@ void movementUpdate(){
 
 
 void doGravity(){
-	camPos.y+=gravity;
+	camPos.y+=gravity / fps;
 	
 	//bound camera
     camPos.x = glm::min(glm::max(camPos.x, MAP_EDGE_OFFSET), (float)VOXELS_WIDTH - MAP_EDGE_OFFSET - 1);
@@ -85,12 +85,12 @@ void doGravity(){
 	//if hit something
 	if (collision){
 		//undo gravity
-		camPos.y-=gravity;
+		camPos.y-=gravity / fps;
 		gravity=0.0f;
 	}
 	//falling
 	else if (voxels[index] < 0){
-		gravity-=0.01f;
+		gravity-=70.0f / fps;
 	}
 }
 
@@ -106,14 +106,14 @@ void doDestroy(){
 }
 
 void doMouseLook(){
-	float sensitivity=0.07f;
+	float sensitivity=7.0f;
 	lookX=(float)mouseX * 2.0f / screenWidth - 1.0f;
 	lookY=(float)mouseY * 2.0f / screenHeight - 1.0f;
 	glm::mat4 rotX=glm::mat4(1.0f);
 	glm::mat4 rotY=glm::mat4(1.0f);
 	
 	if (keys[LMB]){
-		camRotation += glm::vec2(lookY * sensitivity, lookX * sensitivity);
+		camRotation += glm::vec2(lookY * sensitivity, lookX * sensitivity) / (float)fps;
 
 		if (camRotation.x >= 2 * PI){
 			camRotation.x = 0.0f;
