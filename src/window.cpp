@@ -1,6 +1,8 @@
 #include <time.h>
 //#include <cstdio>
 
+#include <stdio.h>
+
 #include "window.hpp"
 #include "render.hpp"
 

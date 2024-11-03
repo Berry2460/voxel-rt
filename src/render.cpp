@@ -16,6 +16,17 @@ struct depthThreadData{
 	int end;
 };
 
+struct depthIndexData{
+	float dist;
+	int x;
+	int y;
+	int z;
+};
+
+static struct depthIndexData* computeDepthIndices();
+//we generate our depth indices first to save us depth calculation time later
+static struct depthIndexData* depthIndices=computeDepthIndices();
+static int depthIndexCount=0;
 static pthread_t genThread[THREAD_COUNT];
 struct depthThreadData threadData[THREAD_COUNT];
 std::atomic<int> depthGenerationDone;
@@ -37,6 +48,44 @@ glm::vec4 vertices[NumVertices] = {
 
 //uniform locations
 GLuint ssbo, AspectRatio, CamPos, CamRotation, LightPos, RotateMatrix, ViewDepthField;
+
+//generate initial indices list for depth optmizations
+static struct depthIndexData* computeDepthIndices(){
+	float dist=-DEPTH_FIELD_RADIUS+1;
+	int entries=0;
+	struct depthIndexData data[DEPTH_FIELD_RADIUS*DEPTH_FIELD_RADIUS*DEPTH_FIELD_RADIUS*2*2*2];
+	struct depthIndexData* finalData;
+	
+	for (int zCheck=-DEPTH_FIELD_RADIUS; zCheck<=DEPTH_FIELD_RADIUS; zCheck++){
+		for (int yCheck=-DEPTH_FIELD_RADIUS; yCheck<=DEPTH_FIELD_RADIUS; yCheck++){
+			for (int xCheck=-DEPTH_FIELD_RADIUS; xCheck<=DEPTH_FIELD_RADIUS; xCheck++){
+				if (xCheck*xCheck + yCheck*yCheck + zCheck*zCheck <= DEPTH_FIELD_RADIUS*DEPTH_FIELD_RADIUS){
+					
+					int xDist=xCheck - (xCheck > 0) + (xCheck < 0);
+					int yDist=yCheck - (yCheck > 0) + (yCheck < 0);
+					int zDist=zCheck - (zCheck > 0) + (zCheck < 0);
+					
+					dist=-sqrt(xDist*xDist + yDist*yDist + zDist*zDist);
+					
+					if (dist <= DEPTH_FIELD_RADIUS){
+						data[entries].dist=dist;
+						data[entries].x=xCheck;
+						data[entries].y=yCheck;
+						data[entries].z=zCheck;
+						entries++;
+					}
+				}
+			}
+		}
+	}
+	finalData=new struct depthIndexData[entries];
+	for (int i=0; i<entries; i++){
+		finalData[i]=data[i];
+	}
+	depthIndexCount=entries;
+	return finalData;
+}
+
 
 // Create a NULL-terminated string by reading the provided file
 static char* readShaderSource(const char* shaderFile){
@@ -147,30 +196,20 @@ void fixDepthField(int x, int y, int z){
 	float nearestDist=dist;
 	
 	if (index >= 0 && voxels[index] < 0){
-		for (int zCheck=-DEPTH_FIELD_RADIUS; zCheck<=DEPTH_FIELD_RADIUS; zCheck++){
-			for (int yCheck=-DEPTH_FIELD_RADIUS; yCheck<=DEPTH_FIELD_RADIUS; yCheck++){
-				for (int xCheck=-DEPTH_FIELD_RADIUS; xCheck<=DEPTH_FIELD_RADIUS; xCheck++){
-					if (xCheck*xCheck + yCheck*yCheck + zCheck*zCheck <= DEPTH_FIELD_RADIUS*DEPTH_FIELD_RADIUS){
-						int xPoint=xCheck+x;
-						int yPoint=yCheck+y;
-						int zPoint=zCheck+z;
-						int xDist=xCheck - (xCheck > 0) + (xCheck < 0);
-						int yDist=yCheck - (yCheck > 0) + (yCheck < 0);
-						int zDist=zCheck - (zCheck > 0) + (zCheck < 0);
-						
-						int indexCheck=getVoxelIndex(xPoint, yPoint, zPoint);
-						dist=-sqrt(xDist*xDist + yDist*yDist + zDist*zDist);
-						
-						//check point is valid
-						if (voxels[indexCheck] >= 0 && dist > nearestDist){
-							if (dist <= -2.0f){
-								nearestDist=dist;
-							}
-							else{
-								nearestDist=0;
-							}
-						}
-					}
+		for (int i=0; i<depthIndexCount; i++){
+			dist=depthIndices[i].dist;
+			int xCheck=x+depthIndices[i].x;
+			int yCheck=y+depthIndices[i].y;
+			int zCheck=z+depthIndices[i].z;
+			int indexCheck=getVoxelIndex(xCheck, yCheck, zCheck);
+			
+			//check point is valid
+			if (voxels[indexCheck] >= 0 && dist > nearestDist){
+				if (dist <= -2.0f){
+					nearestDist=dist;
+				}
+				else{
+					nearestDist=0;
 				}
 			}
 		}

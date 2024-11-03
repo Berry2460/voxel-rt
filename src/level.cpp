@@ -40,6 +40,7 @@ void removeSphere(glm::ivec3 pos, int radius){
             }
         }
     }
+	radius+=DEPTH_FIELD_RADIUS>>1; //increase radius to fix depth field
 	for (int z = -radius; z < radius; z++) {
         for (int y = -radius; y < radius; y++) {
             for (int x = -radius; x < radius; x++) {
