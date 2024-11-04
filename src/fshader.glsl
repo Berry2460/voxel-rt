@@ -20,6 +20,7 @@ uniform vec3 lightPos;
 uniform float aspectRatio;
 uniform mat4 rotateMatrix;
 uniform int viewDepthField;
+uniform vec4 localLights[16];
 
 vec3 hitPos=vec3(0,0,0);
 vec3 hitNormal=vec3(0,0,0);

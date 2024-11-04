@@ -6,7 +6,7 @@ class Entity{
 	public:
 		Entity(int xdim, int ydim, int zdim);
 		~Entity();
-		move(int x, int y, int z);
+		void move(int x, int y, int z);
 	private:
 		float xrot;
 		float yrot;

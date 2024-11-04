@@ -47,7 +47,7 @@ glm::vec4 vertices[NumVertices] = {
 //testE.move(25,25,20);
 
 //uniform locations
-GLuint ssbo, AspectRatio, CamPos, CamRotation, LightPos, RotateMatrix, ViewDepthField;
+GLuint ssbo, AspectRatio, CamPos, CamRotation, LightPos, RotateMatrix, ViewDepthField, LocalLights;
 
 //generate initial indices list for depth optmizations
 static struct depthIndexData* computeDepthIndices(){
@@ -259,6 +259,7 @@ void updateUniforms(){
 	glUniform3f(LightPos, lightPos.x, lightPos.y, lightPos.z);
 	glUniformMatrix4fv(RotateMatrix, 1, GL_FALSE, glm::value_ptr(rotateMatrix));
 	glUniform1i(ViewDepthField, viewDepthField);
+	glUniform4fv(LocalLights, MAX_LOCAL_LIGHTS, glm::value_ptr(*localLights));
 	
 	if (depthGenerationDone == THREAD_COUNT){
 		updateGeometry();
@@ -266,6 +267,14 @@ void updateUniforms(){
 	}
 }
 
+void initLocalLights(){
+	for (int i=0; i<MAX_LOCAL_LIGHTS; i++){
+		localLights[i].x=-1.0f;
+		localLights[i].y=-1.0f;
+		localLights[i].z=-1.0f;
+		localLights[i].a=0.0f;
+	}
+}
 
 void initRender(){
 	// Create a vertex array object
@@ -295,6 +304,9 @@ void initRender(){
 	LightPos = glGetUniformLocation(program, "lightPos");
 	RotateMatrix = glGetUniformLocation(program, "rotateMatrix");
 	ViewDepthField = glGetUniformLocation(program, "viewDepthField");
+	LocalLights = glGetUniformLocation(program, "localLights");
+	
+	initLocalLights();
 	
 	//init uniforms
 	updateUniforms();
@@ -319,6 +331,19 @@ void initRender(){
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo);
 	
 	glShadeModel(GL_FLAT);
+}
+
+
+void placeLocalLight(float x, float y, float z, float diffuse){
+	for (int i=0; i<MAX_LOCAL_LIGHTS; i++){
+		if (localLights[i].x < 0 || localLights[i].y < 0 || localLights[i].z < 0){
+			localLights[i].x=x;
+			localLights[i].y=y;
+			localLights[i].z=z;
+			localLights[i].a=diffuse;
+			break;
+		}
+	}
 }
 
 

@@ -17,7 +17,7 @@ Entity::~Entity(){
 	delete this->voxels;
 }
 
-Entity::move(int x, int y, int z){
+void Entity::move(int x, int y, int z){
 	this->x=x;
 	this->y=y;
 	this->z=z;

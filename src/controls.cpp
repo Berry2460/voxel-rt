@@ -25,9 +25,8 @@ void movementUpdate(){
     rot = glm::rotate(rot, glm::radians(90.0f), glm::vec3(0, 1, 0));
 	glm::vec3 frontStep = glm::normalize(glm::vec3(camDir.x, 0, camDir.z)) * speed; //ignore Y axis
     glm::vec3 sideStep = glm::normalize(glm::vec3(glm::vec4(camDir.x, 0, camDir.z, 0) * rot)) * speed;
-	
 	glm::vec3 stepTaken=glm::vec3(0,0,0);
-
+	
     if (keys[KEY_W]){
         camPos += frontStep;
 		stepTaken+=frontStep;
@@ -43,6 +42,10 @@ void movementUpdate(){
     if (keys[KEY_D]){
         camPos -= sideStep;
 		stepTaken+=-sideStep;
+    }
+	if (keys[KEY_T]){
+        placeLocalLight(camPos.x, camPos.y-1.5f, camPos.z, 0.5f);
+		keys[KEY_T]=false;
     }
 	if (keys[SPACE]){
 		int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);

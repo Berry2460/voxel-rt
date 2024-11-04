@@ -1,7 +1,4 @@
 #include <time.h>
-//#include <cstdio>
-
-#include <stdio.h>
 
 #include "window.hpp"
 #include "render.hpp"
@@ -63,6 +60,10 @@ static void buttons(GLFWwindow* window, int key, int scancode, int action, int m
 		case GLFW_KEY_D:
 			if (action == GLFW_PRESS){keys[KEY_D]=true;}
 			else if (action == GLFW_RELEASE){keys[KEY_D]=false;};
+			break;
+		case GLFW_KEY_T:
+			if (action == GLFW_PRESS){keys[KEY_T]=true;}
+			else if (action == GLFW_RELEASE){keys[KEY_T]=false;};
 			break;
 		case GLFW_KEY_LEFT_SHIFT:
 			if (action == GLFW_PRESS){keys[SHIFT]=true;}

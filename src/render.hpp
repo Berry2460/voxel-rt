@@ -5,9 +5,11 @@
 #define VOXELS_HEIGHT 96
 #define DEPTH_FIELD_RADIUS 7
 #define ENTITY_CHUNK_SIZE 32
+#define MAX_LOCAL_LIGHTS 16
 
 extern const int NumVertices;
 
+extern glm::vec4 localLights[MAX_LOCAL_LIGHTS];
 extern glm::vec3 camPos;
 extern glm::vec3 camDir;
 extern glm::vec2 camRotation;
@@ -32,3 +34,4 @@ void lightUpdate();
 void updateUniforms();
 void removeSphere(glm::ivec3 pos, int radius);
 void reshape(int width, int height);
+void placeLocalLight(float x, float y, float z, float diffuse);

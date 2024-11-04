@@ -35,6 +35,9 @@ glm::vec3 lightPos = startLightPos;
 float aspectRatio = (float)screenWidth / screenHeight;
 float lightRotation = -45.0f;
 
+//local light data
+glm::vec4 localLights[MAX_LOCAL_LIGHTS];
+
 //entity data
 bool* entityMap=new bool[VOXELS_WIDTH/ENTITY_CHUNK_SIZE * 
 						VOXELS_WIDTH/ENTITY_CHUNK_SIZE * 
