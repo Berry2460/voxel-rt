@@ -1,5 +1,6 @@
 # Voxel Raytracer
 - Features fully destructable world and realistic light and shadows.
+- Supports both local and global light sources.
 - Renders voxels stored in a SSBO via fragment shader.
 - Each voxel is stored in just 4 bytes with 24-bit color and 7 unused bits (for future expansion).
 - Supports collision detection and player/entity gravity.
