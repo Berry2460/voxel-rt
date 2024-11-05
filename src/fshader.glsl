@@ -3,6 +3,8 @@
 const int VOXELS_WIDTH=512;
 const int VOXELS_HEIGHT=96;
 const int RENDER_DIST=384;
+const int MAX_LOCAL_LIGHTS=16;
+const int LOCAL_LIGHT_DIST=64;
 const float AMBIENT=0.4f;
 const float DIFFUSE=0.8f;
 
@@ -20,7 +22,7 @@ uniform vec3 lightPos;
 uniform float aspectRatio;
 uniform mat4 rotateMatrix;
 uniform int viewDepthField;
-uniform vec4 localLights[16];
+uniform vec4 localLights[MAX_LOCAL_LIGHTS];
 
 vec3 hitPos=vec3(0,0,0);
 vec3 hitNormal=vec3(0,0,0);
@@ -76,8 +78,10 @@ int castRay(vec3 startPosition, vec3 rayDirection, int dist){ //NOTE: rayDirecti
 	vec3 intersect=(currCheck + forwardSteps - startPosition) / rayDirection;
 	
 	float currDist=0.0f;
-	while (currDist < dist && stepCount < RENDER_DIST){
+	float distTravelled=0.0f;
+	while (distTravelled < dist){
 		stepCount++;
+		distTravelled++;
 		//check which axis has the shortest intersect
 		if (intersect.x < intersect.y && intersect.x < intersect.z){
 			currDist=intersect.x;
@@ -108,6 +112,7 @@ int castRay(vec3 startPosition, vec3 rayDirection, int dist){ //NOTE: rayDirecti
 		//depth field jump
 		else if (tempIndex >= 0 && voxels[tempIndex] != -1){
 			float toJump=-intBitsToFloat(voxels[tempIndex]);
+			distTravelled+=toJump;
 			currDist+=toJump;
 			startPosition=rayDirection*currDist + startPosition;
 			currCheck=vec3ToIntVec3(startPosition);
@@ -131,21 +136,38 @@ void main(){
 	vec3 rotatedDir=vec3(rotateMatrix * vec4(rayDirection, 0));
 	
 	int fColorIndex=castRay(camPos, rotatedDir, RENDER_DIST);
+	vec3 firstHitPos=hitPos;
 	vec3 firstHitNormal=hitNormal;
 	
 	if (viewDepthField == 1){
 		fColor=vec4(stepCount/100, stepCount/100, stepCount/100, 1);
 	}
 	else{
-		vec3 toLight=normalize(lightPos - hitPos);
+		vec3 toLight=normalize(lightPos - firstHitPos);
 		
 		float multiplier=AMBIENT;
 		
 		//apply color of shortest ray
 		if (fColorIndex != -1 && voxels[fColorIndex] >= 0){
 			//cast shadow ray
-			if (castRay(hitPos + toLight*0.001f, toLight, RENDER_DIST>>2) == -1){
-				multiplier=AMBIENT + DIFFUSE*max(0, dot(firstHitNormal, toLight));
+			if (castRay(firstHitPos + toLight*0.001f, toLight, RENDER_DIST) == -1){
+				multiplier+=DIFFUSE*max(0, dot(firstHitNormal, toLight));
+			}
+			
+			//cast rays to local lights
+			for (int i=0; i<MAX_LOCAL_LIGHTS; i++){
+				//ensure local light is in scene
+				if (localLights[i].x >= 0 && localLights[i].y >= 0 && localLights[i].z >= 0){
+					float localLightDist=length(localLights[i].xyz - firstHitPos);
+					//make sure local light isnt too far away
+					if (localLightDist <= LOCAL_LIGHT_DIST){
+						//cast ray to local light
+						vec3 toLocalLight=normalize(localLights[i].xyz - firstHitPos);
+						if (castRay(firstHitPos + toLocalLight*0.001f, toLocalLight, int(localLightDist+1)) == -1){
+							multiplier+=localLights[i].a*max(0, dot(firstHitNormal, toLocalLight));
+						}
+					}
+				}
 			}
 			
 			//color of voxels is stored in a single int to save memory, we use bitwise ops to extract RGB values

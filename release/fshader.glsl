@@ -2,7 +2,7 @@
 
 const int VOXELS_WIDTH=512;
 const int VOXELS_HEIGHT=96;
-const int RENDER_DIST=256;
+const int RENDER_DIST=384;
 const int MAX_LOCAL_LIGHTS=16;
 const int LOCAL_LIGHT_DIST=64;
 const float AMBIENT=0.4f;
@@ -150,7 +150,7 @@ void main(){
 		//apply color of shortest ray
 		if (fColorIndex != -1 && voxels[fColorIndex] >= 0){
 			//cast shadow ray
-			if (castRay(firstHitPos + toLight*0.001f, toLight, RENDER_DIST>>2) == -1){
+			if (castRay(firstHitPos + toLight*0.001f, toLight, RENDER_DIST) == -1){
 				multiplier+=DIFFUSE*max(0, dot(firstHitNormal, toLight));
 			}
 			
