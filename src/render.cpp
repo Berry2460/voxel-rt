@@ -7,8 +7,6 @@
 #include <atomic>
 #include <iostream>
 
-#define THREAD_COUNT 4
-
 const int NumVertices = 6;
 
 struct depthThreadData{
@@ -29,7 +27,8 @@ static struct depthIndexData* depthIndices=computeDepthIndices();
 static int depthIndexCount=0;
 static pthread_t genThread[THREAD_COUNT];
 struct depthThreadData threadData[THREAD_COUNT];
-std::atomic<int> depthGenerationDone;
+
+volatile std::atomic<int> depthGenerationDone;
 
 // Vertices for fullscreen coverage
 glm::vec4 vertices[NumVertices] = {
@@ -184,9 +183,21 @@ int getVoxelIndex(int x, int y, int z){
 
 
 void updateGeometry(){
-	//reload data to SSBO
-	//this is inefficient but it works
+	//reload all data to SSBO
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(voxels), voxels, GL_DYNAMIC_COPY);
+}
+
+void updatePartialGeometry(glm::vec3 start, glm::vec3 end){ //start must be smaller than end
+	//reload partial data to SSBO
+	int xLength=(int)(end.x-start.x)+1;
+	for (float i=start.z; i<end.z; i++){
+		for (float j=start.y; j<end.y; j++){
+			int offset=getVoxelIndex((int)start.x, (int)j, (int)i);
+			if (offset != -1){
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset * sizeof(int), xLength * sizeof(int), &voxels[offset]);
+			}
+		}
+	}
 }
 
 
@@ -247,7 +258,7 @@ static void* computeDepthField(void* threadData){
 			}
 		}
 	}
-	depthGenerationDone++;
+	depthGenerationDone+=1;
 	return NULL;
 }
 
@@ -262,8 +273,8 @@ void updateUniforms(){
 	glUniform4fv(LocalLights, MAX_LOCAL_LIGHTS, glm::value_ptr(*localLights));
 	
 	if (depthGenerationDone == THREAD_COUNT){
-		updateGeometry();
 		depthGenerationDone=false;
+		updateGeometry();
 	}
 }
 
@@ -316,6 +327,8 @@ void initRender(){
 		voxels[i]=-1;
 	}
 	initVoxels();
+	
+	depthGenerationDone=0;
 	
 	//threaded depth field generation
 	for (int i=0; i<THREAD_COUNT; i++){

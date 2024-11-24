@@ -103,8 +103,9 @@ void doDestroy(){
 	if (keys[RMB]){
 		//destroy
 		keys[RMB]=false;
-		removeSphere(camPos + destroyRange*camDir, destroyRange/2.0f);
-		updateGeometry();
+		glm::vec3 center=camPos + destroyRange*camDir;
+		removeSphere(center, destroyRange/2);
+		updatePartialGeometry(center - destroyRange, center + destroyRange);
 	}
 }
 

@@ -7,6 +7,7 @@ const int MAX_LOCAL_LIGHTS=16;
 const int LOCAL_LIGHT_DIST=64;
 const float AMBIENT=0.4f;
 const float DIFFUSE=0.8f;
+const float MAX_OVERBRIGHT=1.25f;
 
 layout(std430, binding=2) buffer voxelBuffer{
 	int voxels[VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH];
@@ -156,8 +157,13 @@ void main(){
 			
 			//cast rays to local lights
 			for (int i=0; i<MAX_LOCAL_LIGHTS; i++){
+				//ensure we don't make areas overbright
+				if (multiplier >= MAX_OVERBRIGHT){
+					multiplier=MAX_OVERBRIGHT;
+					break;
+				}
 				//ensure local light is in scene
-				if (localLights[i].x >= 0 && localLights[i].y >= 0 && localLights[i].z >= 0){
+				else if (localLights[i].x >= 0 && localLights[i].y >= 0 && localLights[i].z >= 0){
 					float localLightDist=length(localLights[i].xyz - firstHitPos);
 					//make sure local light isnt too far away
 					if (localLightDist <= LOCAL_LIGHT_DIST){

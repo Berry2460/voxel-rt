@@ -3,7 +3,10 @@
 
 #define VOXELS_WIDTH 512
 #define VOXELS_HEIGHT 96
+
 #define DEPTH_FIELD_RADIUS 7
+#define THREAD_COUNT 4
+
 #define ENTITY_CHUNK_SIZE 32
 #define MAX_LOCAL_LIGHTS 16
 
@@ -25,6 +28,7 @@ extern int viewDepthField;
 extern bool* entityMap;
 
 void updateGeometry();
+void updatePartialGeometry(glm::vec3 start, glm::vec3 end);
 void initRender();
 int getVoxelIndex(int x, int y, int z);
 void placeVoxel(int x, int y, int z, int voxel);
