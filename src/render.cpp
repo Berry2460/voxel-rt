@@ -4,7 +4,6 @@
 #include "Entity.hpp"
 
 #include <pthread.h>
-#include <atomic>
 #include <iostream>
 
 const int NumVertices = 6;
@@ -12,6 +11,7 @@ const int NumVertices = 6;
 struct depthThreadData{
 	int start;
 	int end;
+	int index;
 };
 
 struct depthIndexData{
@@ -21,14 +21,16 @@ struct depthIndexData{
 	int z;
 };
 
+
 static struct depthIndexData* computeDepthIndices();
 //we generate our depth indices first to save us depth calculation time later
-static struct depthIndexData* depthIndices=computeDepthIndices();
-static int depthIndexCount=0;
+static struct depthIndexData* depthIndices = computeDepthIndices();
+static int depthIndexCount = 0;
 static pthread_t genThread[THREAD_COUNT];
 struct depthThreadData threadData[THREAD_COUNT];
 
-volatile std::atomic<int> depthGenerationDone;
+static char threadsDone[THREAD_COUNT];
+static char depthGenerationDone = 0;
 
 // Vertices for fullscreen coverage
 glm::vec4 vertices[NumVertices] = {
@@ -41,12 +43,24 @@ glm::vec4 vertices[NumVertices] = {
     glm::vec4(1, -1, 0, 1),
 };
 
-//Entity testing
-//Entity testE=new Entity(10, 10, 10);
-//testE.move(25,25,20);
-
 //uniform locations
 GLuint ssbo, AspectRatio, CamPos, CamRotation, LightPos, RotateMatrix, ViewDepthField, LocalLights;
+
+static void initThreadWork(){
+	for (int i = 0; i < THREAD_COUNT; i++){
+		threadsDone[i] = 0;
+	}
+}
+
+static int checkThreadsDone(){
+	int doneCount = 0;
+	
+	for (int i = 0; i < THREAD_COUNT; i++){
+		doneCount += threadsDone[i];
+	}
+	
+	return (doneCount == THREAD_COUNT);
+}
 
 //generate initial indices list for depth optmizations
 static struct depthIndexData* computeDepthIndices(){
@@ -122,8 +136,8 @@ GLuint InitShader(const char* vShaderFile, const char* fShaderFile){
 
 	for (int i = 0; i < 2; ++i){
 	Shader& s = shaders[i];
-	s.source = readShaderSource( s.filename );
-	if ( shaders[i].source == NULL ) {
+	s.source = readShaderSource(s.filename);
+	if (shaders[i].source == NULL){
 		std::cerr << "Failed to read " << s.filename << std::endl;
 		exit( EXIT_FAILURE );
 	}
@@ -135,16 +149,16 @@ GLuint InitShader(const char* vShaderFile, const char* fShaderFile){
 	GLint  compiled;
 	glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
 	
-	if ( !compiled ) {
+	if (!compiled){
 		std::cerr << s.filename << " failed to compile:" << std::endl;
 		GLint  logSize;
-		glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &logSize );
+		glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logSize);
 		char* logMsg = new char[logSize];
-		glGetShaderInfoLog( shader, logSize, NULL, logMsg );
+		glGetShaderInfoLog(shader, logSize, NULL, logMsg);
 		std::cerr << logMsg << std::endl;
 		delete [] logMsg;
 
-		exit( EXIT_FAILURE );
+		exit(EXIT_FAILURE);
 	}
 	delete [] s.source;
 
@@ -155,13 +169,13 @@ GLuint InitShader(const char* vShaderFile, const char* fShaderFile){
 	glLinkProgram(program);
 
 	GLint  linked;
-	glGetProgramiv( program, GL_LINK_STATUS, &linked );
-	if ( !linked ) {
+	glGetProgramiv(program, GL_LINK_STATUS, &linked);
+	if (!linked){
 		std::cerr << "Shader program failed to link" << std::endl;
 		GLint  logSize;
 		glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logSize);
 		char* logMsg = new char[logSize];
-		glGetProgramInfoLog( program, logSize, NULL, logMsg );
+		glGetProgramInfoLog(program, logSize, NULL, logMsg);
 		std::cerr << logMsg << std::endl;
 		delete [] logMsg;
 
@@ -187,12 +201,20 @@ void updateGeometry(){
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(voxels), voxels, GL_DYNAMIC_COPY);
 }
 
-void updatePartialGeometry(glm::vec3 start, glm::vec3 end){ //start must be smaller than end
+void updatePartialGeometry(glm::vec3 start, glm::vec3 end){
+	//ensure start index is smaller than end index
+	int startInd = getVoxelIndex((int)start.x, (int)start.y, (int)start.z);
+	int endInd = getVoxelIndex((int)end.x, (int)end.y, (int)end.z);
+	if (startInd > endInd){
+		glm::vec3 temp = start;
+		start = end;
+		end = temp;
+	}
 	//reload partial data to SSBO
 	int xLength=(int)(end.x-start.x)+1;
-	for (float i=start.z; i<end.z; i++){
-		for (float j=start.y; j<end.y; j++){
-			int offset=getVoxelIndex((int)start.x, (int)j, (int)i);
+	for (float i = start.z; i < end.z; i++){
+		for (float j = start.y; j < end.y; j++){
+			int offset = getVoxelIndex((int)start.x, (int)j, (int)i);
 			if (offset != -1){
 				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset * sizeof(int), xLength * sizeof(int), &voxels[offset]);
 			}
@@ -202,17 +224,17 @@ void updatePartialGeometry(glm::vec3 start, glm::vec3 end){ //start must be smal
 
 
 void fixDepthField(int x, int y, int z){
-	int index=getVoxelIndex(x, y, z);
-	float dist=-DEPTH_FIELD_RADIUS+1;
-	float nearestDist=dist;
+	int index = getVoxelIndex(x, y, z);
+	float dist = -DEPTH_FIELD_RADIUS+1;
+	float nearestDist = dist;
 	
 	if (index >= 0 && voxels[index] < 0){
-		for (int i=0; i<depthIndexCount; i++){
-			dist=depthIndices[i].dist;
-			int xCheck=x+depthIndices[i].x;
-			int yCheck=y+depthIndices[i].y;
-			int zCheck=z+depthIndices[i].z;
-			int indexCheck=getVoxelIndex(xCheck, yCheck, zCheck);
+		for (int i = 0; i < depthIndexCount; i++){
+			dist = depthIndices[i].dist;
+			int xCheck = x+depthIndices[i].x;
+			int yCheck = y+depthIndices[i].y;
+			int zCheck = z+depthIndices[i].z;
+			int indexCheck = getVoxelIndex(xCheck, yCheck, zCheck);
 			
 			//check point is valid
 			if (voxels[indexCheck] >= 0 && dist > nearestDist){
@@ -225,23 +247,23 @@ void fixDepthField(int x, int y, int z){
 			}
 		}
 		if (nearestDist < 0){
-			voxels[index]=*(int*)&nearestDist;
+			voxels[index] = *(int*)&nearestDist;
 		}
 	}
 }
 
 
 void placeVoxel(int x, int y, int z, int voxel){
-	int index=getVoxelIndex(x, y, z);
+	int index = getVoxelIndex(x, y, z);
 	
 	if (index >= 0){
-		voxels[index]=voxel;
+		voxels[index] = voxel;
 	}
 }
 
 
 void destroyVoxel(int x, int y, int z){
-	int index=getVoxelIndex(x, y, z);
+	int index = getVoxelIndex(x, y, z);
 	
 	if (x >= 0 && y >= 0 && z >= 0 && index < VOXELS_WIDTH * VOXELS_HEIGHT * VOXELS_WIDTH){
 		voxels[index] = -1;
@@ -249,7 +271,7 @@ void destroyVoxel(int x, int y, int z){
 }
 
 static void* computeDepthField(void* threadData){
-	struct depthThreadData* data=(struct depthThreadData*)threadData;
+	struct depthThreadData* data = (struct depthThreadData*)threadData;
 	
 	for (int z = data->start; z < data->end; z++){
 		for (int y = 0; y < VOXELS_HEIGHT; y++){
@@ -258,7 +280,8 @@ static void* computeDepthField(void* threadData){
 			}
 		}
 	}
-	depthGenerationDone+=1;
+	
+	threadsDone[data->index] = 1;
 	return NULL;
 }
 
@@ -272,18 +295,18 @@ void updateUniforms(){
 	glUniform1i(ViewDepthField, viewDepthField);
 	glUniform4fv(LocalLights, MAX_LOCAL_LIGHTS, glm::value_ptr(*localLights));
 	
-	if (depthGenerationDone == THREAD_COUNT){
-		depthGenerationDone=false;
+	if (!depthGenerationDone && checkThreadsDone()){
+		depthGenerationDone = 1;
 		updateGeometry();
 	}
 }
 
 void initLocalLights(){
 	for (int i=0; i<MAX_LOCAL_LIGHTS; i++){
-		localLights[i].x=-1.0f;
-		localLights[i].y=-1.0f;
-		localLights[i].z=-1.0f;
-		localLights[i].a=0.0f;
+		localLights[i].x = -1.0f;
+		localLights[i].y = -1.0f;
+		localLights[i].z = -1.0f;
+		localLights[i].a = 0.0f;
 	}
 }
 
@@ -324,16 +347,18 @@ void initRender(){
 	
 	//init voxels
 	for (int i=0; i<VOXELS_WIDTH*VOXELS_HEIGHT*VOXELS_WIDTH; i++){
-		voxels[i]=-1;
+		voxels[i] = -1;
 	}
 	initVoxels();
 	
-	depthGenerationDone=0;
+	initThreadWork();
 	
 	//threaded depth field generation
-	for (int i=0; i<THREAD_COUNT; i++){
-		threadData[i].start=i*(VOXELS_WIDTH/THREAD_COUNT);
-		threadData[i].end=(i+1)*(VOXELS_WIDTH/THREAD_COUNT);
+	for (int i = 0; i<THREAD_COUNT; i++){
+		threadData[i].start = i*(VOXELS_WIDTH/THREAD_COUNT);
+		threadData[i].end = (i+1)*(VOXELS_WIDTH/THREAD_COUNT);
+		threadData[i].index = i;
+		
 		pthread_create(&genThread[i], NULL, computeDepthField, (void*)&threadData[i]);
 	}
 	
@@ -350,10 +375,10 @@ void initRender(){
 void placeLocalLight(float x, float y, float z, float diffuse){
 	for (int i=0; i<MAX_LOCAL_LIGHTS; i++){
 		if (localLights[i].x < 0 || localLights[i].y < 0 || localLights[i].z < 0){
-			localLights[i].x=x;
-			localLights[i].y=y;
-			localLights[i].z=z;
-			localLights[i].a=diffuse;
+			localLights[i].x = x;
+			localLights[i].y = y;
+			localLights[i].z = z;
+			localLights[i].a = diffuse;
 			break;
 		}
 	}
@@ -362,7 +387,7 @@ void placeLocalLight(float x, float y, float z, float diffuse){
 
 void lightUpdate(){
     float increment = 0.3f / fps;
-    glm::mat4 rot=glm::mat4(1.0f);
+    glm::mat4 rot = glm::mat4(1.0f);
 
     if (lightRotation >= 360.0f) {
         lightRotation = 0.0f; //wrap back to 0 after 360 degrees

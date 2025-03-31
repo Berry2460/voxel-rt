@@ -10,9 +10,9 @@ static float gravity=0.0f;
 int collided(){
 	int collided=0;
 	for (int i=1; i<PLAYER_HEIGHT; i++){
-		int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT + i, (int)camPos.z);
+		int index = getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT + i, (int)camPos.z);
 		if (voxels[index] > -1){
-			collided=i;
+			collided = i;
 		}
 	}
 	return collided;
@@ -21,7 +21,7 @@ int collided(){
 
 void movementUpdate(){
     float speed = 36.0f / fps;
-    glm::mat4 rot=glm::mat4(1.0f);
+    glm::mat4 rot = glm::mat4(1.0f);
     rot = glm::rotate(rot, glm::radians(90.0f), glm::vec3(0, 1, 0));
 	glm::vec3 frontStep = glm::normalize(glm::vec3(camDir.x, 0, camDir.z)) * speed; //ignore Y axis
     glm::vec3 sideStep = glm::normalize(glm::vec3(glm::vec4(camDir.x, 0, camDir.z, 0) * rot)) * speed;
@@ -29,45 +29,45 @@ void movementUpdate(){
 	
     if (keys[KEY_W]){
         camPos += frontStep;
-		stepTaken+=frontStep;
+		stepTaken += frontStep;
     }
     if (keys[KEY_S]){
         camPos -= frontStep;
-		stepTaken+=-frontStep;
+		stepTaken += -frontStep;
     }
     if (keys[KEY_A]){
         camPos += sideStep;
-		stepTaken+=sideStep;
+		stepTaken += sideStep;
     }
     if (keys[KEY_D]){
         camPos -= sideStep;
-		stepTaken+=-sideStep;
+		stepTaken += -sideStep;
     }
 	if (keys[KEY_T]){
         placeLocalLight(camPos.x, camPos.y-1.5f, camPos.z, 0.5f);
-		keys[KEY_T]=false;
+		keys[KEY_T] = false;
     }
 	if (keys[SPACE]){
 		int index=getVoxelIndex((int)camPos.x, (int)camPos.y - PLAYER_HEIGHT, (int)camPos.z);
 		if (voxels[index] > -1 && gravity == 0.0f){
-			gravity+=35.0f;
+			gravity += 35.0f;
 		}
     }
 	if (keys[SHIFT]){
-		keys[SHIFT]=false;
-		viewDepthField=!viewDepthField;
+		keys[SHIFT] = false;
+		viewDepthField = !viewDepthField;
     }
 	
 	//movement collision check
-	int collision=collided();
+	int collision = collided();
 	while (collision){
 		if (stepTaken.x*stepTaken.x + stepTaken.y*stepTaken.y + stepTaken.z*stepTaken.z > 0){
 			collision=collided();
 			if (collision > PLAYER_HEIGHT>>2){
-				camPos-=stepTaken;
+				camPos -= stepTaken;
 			}
 			else{
-				camPos.y+=collision;
+				camPos.y += collision;
 			}
 		}
 	}
@@ -88,12 +88,12 @@ void doGravity(){
 	//if hit something
 	if (collision){
 		//undo gravity
-		camPos.y-=gravity / fps;
-		gravity=0.0f;
+		camPos.y -= gravity / fps;
+		gravity = 0.0f;
 	}
 	//falling
 	else if (voxels[index] < 0){
-		gravity-=70.0f / fps;
+		gravity -= 70.0f / fps;
 	}
 }
 
@@ -110,11 +110,11 @@ void doDestroy(){
 }
 
 void doMouseLook(){
-	float sensitivity=7.0f;
-	lookX=(float)mouseX * 2.0f / screenWidth - 1.0f;
-	lookY=(float)mouseY * 2.0f / screenHeight - 1.0f;
-	glm::mat4 rotX=glm::mat4(1.0f);
-	glm::mat4 rotY=glm::mat4(1.0f);
+	float sensitivity = 7.0f;
+	lookX = (float)mouseX * 2.0f / screenWidth - 1.0f;
+	lookY = (float)mouseY * 2.0f / screenHeight - 1.0f;
+	glm::mat4 rotX = glm::mat4(1.0f);
+	glm::mat4 rotY = glm::mat4(1.0f);
 	
 	if (keys[LMB]){
 		camRotation += glm::vec2(lookY * sensitivity, lookX * sensitivity) / (float)fps;

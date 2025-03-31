@@ -39,12 +39,15 @@ float lightRotation = -45.0f;
 glm::vec4 localLights[MAX_LOCAL_LIGHTS];
 
 //entity data
-bool* entityMap=new bool[VOXELS_WIDTH/ENTITY_CHUNK_SIZE * 
-						VOXELS_WIDTH/ENTITY_CHUNK_SIZE * 
-						VOXELS_HEIGHT/ENTITY_CHUNK_SIZE];
+bool* entityMap = new bool[VOXELS_WIDTH/ENTITY_CHUNK_SIZE * 
+						  VOXELS_WIDTH/ENTITY_CHUNK_SIZE * 
+						  VOXELS_HEIGHT/ENTITY_CHUNK_SIZE];
 
 //game loop
 int main(){
+	//Entity testing
+	//Entity* testE = new Entity(10, 10, 10);
+	//testE->setPos(195, 50, 165);
 	
 	startWindow("Voxels");
 	
@@ -60,7 +63,11 @@ int main(){
 		doMouseLook();
 		doGravity();
 		doDestroy();
+		
+		//for testing entity
 		//updateEntities();
+		//testE->move();
+		//testE->update();
 		
 		updateUniforms();
 	}
