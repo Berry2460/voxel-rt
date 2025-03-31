@@ -170,7 +170,8 @@ void main(){
 						//cast ray to local light
 						vec3 toLocalLight=normalize(localLights[i].xyz - firstHitPos);
 						if (castRay(firstHitPos + toLocalLight*0.001f, toLocalLight, int(localLightDist+1)) == -1){
-							multiplier+=localLights[i].a*max(0, dot(firstHitNormal, toLocalLight));
+							//use normal and add light decay for local lights
+							multiplier+=localLights[i].a * max(0, dot(firstHitNormal, toLocalLight)) * ((LOCAL_LIGHT_DIST - localLightDist) / LOCAL_LIGHT_DIST);
 						}
 					}
 				}
