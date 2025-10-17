@@ -71,16 +71,16 @@ int castRay(vec3 startPosition, vec3 rayDirection, int dist){ //NOTE: rayDirecti
 	ivec3 step=vec3ToIntVec3(vec3(sign(rayDirection.x), sign(rayDirection.y), sign(rayDirection.z)));
 	ivec3 forwardSteps=ivec3(int(step.x > 0), int(step.y > 0), int(step.z > 0));
 	
-	float dx=1.0f/abs(rayDirection.x);
-	float dy=1.0f/abs(rayDirection.y);
-	float dz=1.0f/abs(rayDirection.z);
+	float dx=1.0f/abs(rayDirection.x + 0.000001f);
+	float dy=1.0f/abs(rayDirection.y + 0.000001f);
+	float dz=1.0f/abs(rayDirection.z + 0.000001f);
 	
 	//find the first intersect of each axis
 	vec3 intersect=(currCheck + forwardSteps - startPosition) / rayDirection;
 	
 	float currDist=0.0f;
 	float distTravelled=0.0f;
-	while (distTravelled < dist){
+	while (distTravelled < dist && distTravelled < RENDER_DIST){
 		stepCount++;
 		distTravelled++;
 		//check which axis has the shortest intersect
@@ -162,13 +162,16 @@ void main(){
 					multiplier=MAX_OVERBRIGHT;
 					break;
 				}
+				
 				//ensure local light is in scene
 				else if (localLights[i].x >= 0 && localLights[i].y >= 0 && localLights[i].z >= 0){
 					float localLightDist=length(localLights[i].xyz - firstHitPos);
+					
 					//make sure local light isnt too far away
 					if (localLightDist <= LOCAL_LIGHT_DIST){
 						//cast ray to local light
 						vec3 toLocalLight=normalize(localLights[i].xyz - firstHitPos);
+						
 						if (castRay(firstHitPos + toLocalLight*0.001f, toLocalLight, int(localLightDist+1)) == -1){
 							//use normal and add light decay for local lights
 							multiplier+=localLights[i].a * max(0, dot(firstHitNormal, toLocalLight)) * ((LOCAL_LIGHT_DIST - localLightDist) / LOCAL_LIGHT_DIST);
